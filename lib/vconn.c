@@ -49,10 +49,6 @@
 #include "random.h"
 #include "util.h"
 
-// MAH: start
-#include "openflow/ericsson-ext.h"
-// MAH: end
-
 #define THIS_MODULE VLM_vconn
 #include "vlog.h"
 
@@ -795,27 +791,16 @@ make_add_flow(const struct flow *flow, uint32_t buffer_id,
     ofm->match.nw_proto = flow->nw_proto;
     ofm->match.tp_src = flow->tp_src;
     ofm->match.tp_dst = flow->tp_dst;
-    // MAH: start
-    // add support for two MPLS labels
-    ofm->match.mpls_label1 = flow->mpls_label1;
-    ofm->match.mpls_label2 = flow->mpls_label2;
-    // MAH: end
     ofm->command = htons(OFPFC_ADD);
     ofm->idle_timeout = htons(idle_timeout);
     ofm->hard_timeout = htons(OFP_FLOW_PERMANENT);
     ofm->buffer_id = htonl(buffer_id);
-
     return out;
 }
 
-
-
 struct ofpbuf *
 make_add_simple_flow(const struct flow *flow,
-					 // MAH: start port is no 32 bit
-                     //uint32_t buffer_id, uint16_t out_port,
-					 uint32_t buffer_id, uint32_t out_port,
-					 // MAH: end
+                     uint32_t buffer_id, uint16_t out_port,
                      uint16_t idle_timeout)
 {
     struct ofp_action_output *oao;
@@ -825,20 +810,13 @@ make_add_simple_flow(const struct flow *flow,
     oao = (struct ofp_action_output *)&ofm->actions[0];
     oao->type = htons(OFPAT_OUTPUT);
     oao->len = htons(sizeof *oao);
-    // MAH: now 32-bits
-    oao->port = htonl(out_port);
-    //oao->port = htons(out_port);
-    // MAH: end
-
+    oao->port = htons(out_port);
     return buffer;
 }
 
 struct ofpbuf *
 make_unbuffered_packet_out(const struct ofpbuf *packet,
-						   // MAH: start port is no 32 bit
-                           uint16_t in_port, uint32_t out_port)
-						   //uint16_t in_port, uint16_t out_port)
-						   // MAH: end
+                           uint16_t in_port, uint16_t out_port)
 {
     struct ofp_packet_out *opo;
     struct ofp_action_output *oao;
@@ -854,10 +832,7 @@ make_unbuffered_packet_out(const struct ofpbuf *packet,
     oao = (struct ofp_action_output *)&opo->actions[0];
     oao->type = htons(OFPAT_OUTPUT);
     oao->len = htons(sizeof *oao);
-    // MAH: now 32-bits
-    oao->port = htonl(out_port);
-    //oao->port = htons(out_port);
-    // MAH: end
+    oao->port = htons(out_port);
 
     opo->actions_len = htons(sizeof *oao);
 
@@ -868,10 +843,7 @@ make_unbuffered_packet_out(const struct ofpbuf *packet,
 
 struct ofpbuf *
 make_buffered_packet_out(uint32_t buffer_id,
-						 // MAH: start port is 32-bit
-						 uint16_t in_port, uint32_t out_port)
-                         //uint16_t in_port, uint16_t out_port)
-						 // MAH: end
+                         uint16_t in_port, uint16_t out_port)
 {
     struct ofp_packet_out *opo;
     struct ofp_action_output *oao;
@@ -887,10 +859,7 @@ make_buffered_packet_out(uint32_t buffer_id,
     oao = (struct ofp_action_output *)&opo->actions[0];
     oao->type = htons(OFPAT_OUTPUT);
     oao->len = htons(sizeof *oao);
-    // MAH: now 32-bits
-    oao->port = htonl(out_port);
-    //oao->port = htons(out_port);
-    // MAH: end
+    oao->port = htons(out_port);
 
     opo->actions_len = htons(sizeof *oao);
     return out;

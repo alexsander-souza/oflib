@@ -271,7 +271,7 @@ static void run(int retval, const char *message, ...)
     }
 }
 
-
+
 #ifdef HAVE_NETLINK
 /* Netlink-only commands. */
 
@@ -960,7 +960,7 @@ static void do_add_flow(const struct settings *s, int argc, char *argv[])
     ofm->hard_timeout = htons(hard_timeout);
     ofm->buffer_id = htonl(UINT32_MAX);
     ofm->priority = htons(priority);
-    ofm->reserved = htonl(0);
+    // ofm->reserved = htonl(0);
 
     /* xxx Should we use the ofpbuf library? */
     buffer->size -= MAX_ACT_LEN - actions_len;
@@ -1012,7 +1012,7 @@ static void do_add_flows(const struct settings *s, int argc, char *argv[])
         ofm->hard_timeout = htons(hard_timeout);
         ofm->buffer_id = htonl(UINT32_MAX);
         ofm->priority = htons(priority);
-        ofm->reserved = htonl(0);
+        // ofm->reserved = htonl(0);
 
         /* xxx Should we use the ofpbuf library? */
         buffer->size -= MAX_ACT_LEN - actions_len;
@@ -1046,7 +1046,7 @@ static void do_mod_flows(const struct settings *s, int argc, char *argv[])
     ofm->hard_timeout = htons(hard_timeout);
     ofm->buffer_id = htonl(UINT32_MAX);
     ofm->priority = htons(priority);
-    ofm->reserved = htonl(0);
+    // ofm->reserved = htonl(0);
 
     /* xxx Should we use the buffer library? */
     buffer->size -= MAX_ACT_LEN - actions_len;
@@ -1080,7 +1080,7 @@ static void do_del_flows(const struct settings *s, int argc, char *argv[])
     ofm->buffer_id = htonl(UINT32_MAX);
     ofm->out_port = htons(out_port);
     ofm->priority = htons(priority);
-    ofm->reserved = htonl(0);
+    // ofm->reserved = htonl(0);
 
     open_vconn(argv[1], &vconn);
     send_openflow_buffer(vconn, buffer);

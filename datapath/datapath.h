@@ -11,9 +11,6 @@
 #include <linux/skbuff.h>
 #include "openflow/openflow.h"
 #include "flow.h"
-// MAH: start
-#include "switch-port.h"
-// MAH: end
 
 
 #define NL_FLOWS_PER_MESSAGE 100
@@ -25,24 +22,12 @@
 #endif
 
 /* Capabilities supported by this implementation. */
-// MAH: start
-// switch supports a virtual port table
-/*
 #define OFP_SUPPORTED_CAPABILITIES ( OFPC_FLOW_STATS \
 		| OFPC_TABLE_STATS \
 		| OFPC_PORT_STATS \
 		| OFPC_MULTI_PHY_TX )
-*/
-#define OFP_SUPPORTED_CAPABILITIES ( OFPC_FLOW_STATS \
-        | OFPC_TABLE_STATS \
-        | OFPC_PORT_STATS \
-        | OFPC_MULTI_PHY_TX \
-        | OFPC_VPORT_TABLE)
-// MAH: end
-
 
 /* Actions supported by this implementation. */
-// MAH: start
 #define OFP_SUPPORTED_ACTIONS ( (1 << OFPAT_OUTPUT) \
 		| (1 << OFPAT_SET_VLAN_VID) \
 		| (1 << OFPAT_SET_VLAN_PCP) \
@@ -52,21 +37,7 @@
 		| (1 << OFPAT_SET_NW_SRC) \
 		| (1 << OFPAT_SET_NW_DST) \
 		| (1 << OFPAT_SET_TP_SRC) \
-		| (1 << OFPAT_SET_TP_DST) 	\
-		| (1 << OFPAT_SET_MPLS_LABEL) \
-		| (1 << OFPAT_SET_MPLS_EXP) )
-// MAH: start
-// added OFPAT_SET_MPLS_LABEL & OFPAT_SET_MPLS_EXP above
-// MAH: end
-
-// MAH: start
-// supported actions at the virtual port table
-#define OFP_SUPPORTED_VPORT_TABLE_ACTIONS ( (1 << OFPPAT_OUTPUT) \
-										| (1 << OFPPAT_POP_MPLS) \
-										| (1 << OFPPAT_PUSH_MPLS) \
-										| (1 << OFPPAT_SET_MPLS_LABEL) \
-										| (1 << OFPPAT_SET_MPLS_EXP) ) \
-// MAH: end
+		| (1 << OFPAT_SET_TP_DST) )
 
 struct sk_buff;
 
@@ -90,11 +61,6 @@ struct datapath {
 	struct net_bridge_port *ports[DP_MAX_PORTS];
 	struct net_bridge_port *local_port; /* OFPP_LOCAL port. */
 	struct list_head port_list; /* All ports, including local_port. */
-
-    // MAH: start
-    /* Virtual ports. */
-    struct vport_table_t vport_table;
-    // MAH: end
 };
 
 /* Information necessary to reply to the sender of an OpenFlow message. */
@@ -114,9 +80,6 @@ struct net_bridge_port {
 	struct net_device *dev;
 	struct snat_conf *snat;  /* Only set if SNAT is configured for this port. */
 	struct list_head node;   /* Element in datapath.ports. */
-    // MAH: start
-    unsigned long long int mpls_ttl0_dropped;
-    // MAH: end
 };
 
 extern struct mutex dp_mutex;
@@ -130,9 +93,6 @@ int dp_output_control(struct datapath *, struct sk_buff *, uint32_t,
 			size_t, int);
 void dp_set_origin(struct datapath *, uint16_t, struct sk_buff *);
 int dp_send_features_reply(struct datapath *, const struct sender *);
-// MAH: start
-int dp_send_vport_table_features(struct datapath *dp, const struct sender *sender);
-// MAH: end
 int dp_send_config_reply(struct datapath *, const struct sender *);
 int dp_send_port_status(struct net_bridge_port *p, uint8_t status);
 int dp_send_flow_expired(struct datapath *, struct sw_flow *,

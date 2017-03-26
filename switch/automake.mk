@@ -10,17 +10,11 @@ switch_switch_SOURCES = \
 	switch/datapath.h \
 	switch/dp_act.c \
 	switch/dp_act.h \
-	switch/er_act.c\
-	switch/er_act.h\
 	switch/nx_act.c \
 	switch/nx_act.h \
-	switch/pt_act.c \
-	switch/pt_act.h \
 	switch/switch.c \
 	switch/switch-flow.c \
 	switch/switch-flow.h \
-	switch/switch-port.c \
-	switch/switch-port.h \
 	switch/table.h \
 	switch/table-hash.c \
 	switch/table-linear.c

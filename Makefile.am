@@ -19,10 +19,6 @@ if HAVE_EXT
 AM_CPPFLAGS += -I $(top_srcdir)/ext/include
 endif
 
-# MAH: start
-AM_CPPFLAGS += `xml2-config --cflags`
-
-# MAH: end
 
 AM_CFLAGS = -Wstrict-prototypes
 

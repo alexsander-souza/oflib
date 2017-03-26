@@ -17,61 +17,12 @@
 #include "nx_msg.h"
 #include "chain.h"
 #include "flow.h"
-// MAH: start
-#include "pt_act.h"
-// MAH: end
 
 /* FIXME: do we need to use GFP_ATOMIC everywhere here? */
 
 
 static struct sk_buff *retrieve_skb(uint32_t id);
 static void discard_skb(uint32_t id);
-
-// MAH: start
-int run_through_vport_table(struct sw_chain *chain, struct sk_buff *skb,
-							struct net_bridge_port *p, uint32_t vport)
-{
-	struct vport_table_entry *vpe;
-    struct sw_flow_key key;
-
-	// extract the flow again since we need it
-	// and the layer pointers may changed
-    key.wildcards = 0;
-    if (flow_extract(skb, p ? p->port_no : OFPP_NONE, &key)
-        && (chain->dp->flags & OFPC_FRAG_MASK) == OFPC_FRAG_DROP) {
-        /* Drop fragment. */
-    	kfree_skb(skb);
-        return 0;
-    }
-
-    // run through the chain of port table entries
-    vpe = vport_table_lookup(&chain->dp->vport_table, vport);
-    chain->dp->vport_table.lookup_count++;
-    if (vpe) chain->dp->vport_table.port_match_count++;
-    while (vpe != NULL) {
-		execute_vport_actions(chain->dp, skb, &key, vpe->port_acts->actions,
-							  vpe->port_acts->actions_len);
-		vport_used(vpe, skb); // update counters for virtual port
-		if (vpe->parent_port_ptr == NULL) {
-			// if a port table's parent_port_ptr is NULL then
-			// the parent_port should be a physical port
-			if (vpe->parent_port <= OFPP_VP_START) {
-				// done traversing port chain, send packet to output port
-				dp_output_port(chain->dp, skb, vpe->parent_port, false);
-			} else {
-				kfree_skb(skb);
-			}
-		} else {
-			// increment the number of port entries accessed by chaining
-			chain->dp->vport_table.chain_match_count++;
-		}
-		// move to the parent port entry
-		vpe = vpe->parent_port_ptr;
-	}
-
-	return 0;
-}
-// MAH: end
 
 /* 'skb' was received on port 'p', which may be a physical switch port, the
  * local port, or a null pointer.  Process it according to 'chain'.  Returns 0
@@ -92,23 +43,6 @@ int run_flow_through_tables(struct sw_chain *chain, struct sk_buff *skb,
 		kfree_skb(skb);
 		return 0;
 	}
-
-    // MAH: start
-    // drop MPLS packets with TTL 1
-    if (key.mpls_label1 != MPLS_INVALID_LABEL) {
-    	mpls_header mpls_h;
-    	mpls_h.value = ntohl(*((uint32_t*)mpls_hdr(skb)));
-    	if (mpls_h.ttl == 1) {
-    		// delete packet buffer
-    		kfree_skb(skb);
-    		// increment mpls drop counter
-    		p->mpls_ttl0_dropped++;
-    		return 0;
-    	}
-    }
-    // MAH: end
-
-
 	if (p && p->config & (OFPPC_NO_RECV | OFPPC_NO_RECV_STP) &&
 	    p->config & (compare_ether_addr(key.dl_dst, stp_eth_addr)
 			? OFPPC_NO_RECV : OFPPC_NO_RECV_STP)) {
@@ -119,13 +53,11 @@ int run_flow_through_tables(struct sw_chain *chain, struct sk_buff *skb,
 	flow = chain_lookup(chain, &key);
 	if (likely(flow != NULL)) {
 		struct sw_flow_actions *sf_acts = rcu_dereference(flow->sf_acts);
-		//printk("flow matched!\n");
 		flow_used(flow, skb);
 		execute_actions(chain->dp, skb, &key,
 				sf_acts->actions, sf_acts->actions_len, 0);
 		return 0;
 	} else {
-		//printk("flow not matched!\n");
 		return -ESRCH;
 	}
 }
@@ -138,11 +70,10 @@ void fwd_port_input(struct sw_chain *chain, struct sk_buff *skb,
 {
 	WARN_ON_ONCE(skb_shared(skb));
 	WARN_ON_ONCE(skb->destructor);
-	if (run_flow_through_tables(chain, skb, p)) {
+	if (run_flow_through_tables(chain, skb, p))
 		dp_output_control(chain->dp, skb, fwd_save_skb(skb),
 				  chain->dp->miss_send_len,
 				  OFPR_NO_MATCH);
-	}
 }
 
 static int
@@ -333,63 +264,6 @@ error:
 	return error;
 }
 
-// MAH: start
-/* Add a virtual port table entry. */
-int
-add_vport(struct sw_chain *chain, const struct sender *sender,
-		  const struct ofp_vport_mod *ovpm)
-{
-	int error = 0;
-	uint16_t v_code;
-	unsigned int vport, parent_port;
-	struct vport_table_entry *vpe;
-	size_t actions_len;
-
-	actions_len = ntohs(ovpm->header.length) - sizeof *ovpm;
-	vport = ntohl(ovpm->vport);
-	parent_port = ntohl(ovpm->parent_port);
-
-	// check whether port table entry exists for specified port number
-	vpe = vport_table_lookup(&(chain->dp->vport_table), vport);
-	if (vpe != NULL) {
-		printk("vport %u already exists!\n", vport);
-		dp_send_error_msg(chain->dp, sender, OFPET_BAD_ACTION, OFPET_VPORT_MOD_FAILED,
-		                  ovpm, ntohs(ovpm->header.length));
-		return EINVAL;
-	}
-	// check whether actions are valid
-    v_code = validate_vport_actions(chain->dp, ovpm->actions, actions_len);
-    if (v_code != ACT_VALIDATION_OK) {
-        dp_send_error_msg(chain->dp, sender, OFPET_BAD_ACTION, v_code,
-						  ovpm, ntohs(ovpm->header.length));
-        return EINVAL;
-    }
-
-	vpe = vport_table_entry_alloc(actions_len);
-
-	vpe->vport = vport;
-	vpe->parent_port = parent_port;
-	if (!(vport >= OFPP_VP_START && vport <= OFPP_VP_END)) {
-		printk("port %u is not in the virtual port range (%u-%u)", vport, OFPP_VP_START, OFPP_VP_END);
-		dp_send_error_msg(chain->dp, sender, OFPET_BAD_ACTION, OFPET_VPORT_MOD_FAILED,
-		                  ovpm, ntohs(ovpm->header.length));
-		free_vport_table_entry(vpe); // free allocated entry
-		return EINVAL;
-	}
-
-	vpe->port_acts->actions_len = actions_len;
-	memcpy(vpe->port_acts->actions, ovpm->actions, actions_len);
-
-	error = insert_vport_table_entry(&chain->dp->vport_table, vpe);
-	if (error) {
-		printk("could not insert port table entry for port %u\n", vport);
-	}
-
-    return error;
-
-}
-// MAH: end
-
 static int
 mod_flow(struct sw_chain *chain, const struct sender *sender,
 		const struct ofp_flow_mod *ofm)
@@ -460,37 +334,6 @@ recv_flow(struct sw_chain *chain, const struct sender *sender, const void *msg)
 		return -ENOTSUPP;
 	}
 }
-
-// MAH: start
-/* add or remove a virtual port table entry */
-static int
-recv_vport_mod(struct sw_chain *chain, const struct sender *sender, const void *msg)
-{
-    const struct ofp_vport_mod *ovpm = msg;
-    uint16_t command = ntohs(ovpm->command);
-
-    if (command == OFPVP_ADD) {
-        return add_vport(chain, sender, ovpm);
-    } else if (command == OFPVP_DELETE) {
-    	if (remove_vport_table_entry(&chain->dp->vport_table, ntohl(ovpm->vport))) {
-			printk("could not remove_vport_table_entry %u\n", ntohl(ovpm->vport));
-			return -EINVAL;
-		}
-    }
-
-    return 0;
-}
-// MAH: end
-
-// MAH: start
-static int
-recv_vport_table_features_request(struct sw_chain *chain, const struct sender *sender,
-								  const void *msg)
-{
-	dp_send_vport_table_features(chain->dp, sender);
-	return 0;
-}
-// MAH: end
 
 static int
 recv_vendor(struct sw_chain *chain, const struct sender *sender,
@@ -564,17 +407,7 @@ fwd_control_input(struct sw_chain *chain, const struct sender *sender,
 		[OFPT_PORT_MOD] = {
 			sizeof (struct ofp_port_mod),
 			recv_port_mod,
-		},
-		// MAH: start
-		[OFPT_VPORT_MOD] = {
-			sizeof(struct ofp_vport_mod),
-			recv_vport_mod,
-		},
-		[OFPT_VPORT_TABLE_FEATURES_REQUEST] = {
-			 sizeof(struct ofp_header),
-			 recv_vport_table_features_request,
 		}
-    	// MAH: end
 	};
 
 	struct ofp_header *oh;

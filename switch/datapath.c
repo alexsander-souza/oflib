@@ -46,9 +46,6 @@
 #include "rconn.h"
 #include "stp.h"
 #include "switch-flow.h"
-// MAH: start
-#include "pt_act.h"
-// MAH: end
 #include "table.h"
 #include "vconn.h"
 #include "xtoxll.h"
@@ -89,7 +86,7 @@ static void del_switch_port(struct sw_port *p);
  * is an index into an array of buffers.  The cookie distinguishes between
  * different packets that have occupied a single buffer.  Thus, the more
  * buffers we have, the lower-quality the cookie... */
-#define PKT_BUFFER_BITS 8
+#define PKT_BUFFER_BITS 12
 #define N_PKT_BUFFERS (1 << PKT_BUFFER_BITS)
 #define PKT_BUFFER_MASK (N_PKT_BUFFERS - 1)
 
@@ -97,17 +94,13 @@ static void del_switch_port(struct sw_port *p);
 
 int run_flow_through_tables(struct datapath *, struct ofpbuf *,
                             struct sw_port *);
-// MAH: start
-int run_through_vport_table(struct datapath *dp, struct ofpbuf *buffer,
-						   struct sw_port *p, uint32_t vport);
-// MAH: end
 void fwd_port_input(struct datapath *, struct ofpbuf *, struct sw_port *);
 int fwd_control_input(struct datapath *, const struct sender *,
                       const void *, size_t);
 
 uint32_t save_buffer(struct ofpbuf *);
-struct ofpbuf *retrieve_buffer(uint32_t id);
-void discard_buffer(uint32_t id);
+static struct ofpbuf *retrieve_buffer(uint32_t id);
+static void discard_buffer(uint32_t id);
 
 static int port_no(struct datapath *dp, struct sw_port *p)
 {
@@ -149,12 +142,6 @@ dp_new(struct datapath **dp_, uint64_t dpid, struct rconn *rconn)
     list_init(&dp->port_list);
     dp->flags = 0;
     dp->miss_send_len = OFP_DEFAULT_MISS_SEND_LEN;
-
-    // MAH: start
-    // Initialize port table
-    vport_table_init(&dp->vport_table);
-    // MAH: end
-
     *dp_ = dp;
     return 0;
 }
@@ -206,64 +193,6 @@ dp_add_port(struct datapath *dp, const char *name)
 
     return 0;
 }
-
-// MAH: start
-/* Add a virtual port table entry. */
-int
-dp_add_vport(struct datapath *dp, const struct sender *sender,
-			 const struct ofp_vport_mod *ovpm)
-{
-	int error = 0;
-	uint16_t v_code;
-	unsigned int vport, parent_port;
-	struct vport_table_entry *vpe;
-	size_t actions_len;
-
-	actions_len = ntohs(ovpm->header.length) - sizeof *ovpm;
-	vport = ntohl(ovpm->vport);
-	parent_port = ntohl(ovpm->parent_port);
-
-	// check whether port table entry exists for specified port number
-	vpe = vport_table_lookup(&dp->vport_table, vport);
-	if (vpe != NULL) {
-		VLOG_ERR("vport %u already exists!\n", vport);
-		dp_send_error_msg(dp, sender, OFPET_BAD_ACTION, OFPET_VPORT_MOD_FAILED,
-		                  ovpm, ntohs(ovpm->header.length));
-		return EINVAL;
-	}
-
-	// check whether actions are valid
-    v_code = validate_vport_actions(dp, ovpm->actions, actions_len);
-    if (v_code != ACT_VALIDATION_OK) {
-        dp_send_error_msg(dp, sender, OFPET_BAD_ACTION, v_code,
-						  ovpm, ntohs(ovpm->header.length));
-        return EINVAL;
-    }
-
-	vpe = vport_table_entry_alloc(actions_len);
-
-	vpe->vport = vport;
-	vpe->parent_port = parent_port;
-	if (!(vport >= OFPP_VP_START && vport <= OFPP_VP_END)) {
-		VLOG_ERR("port %u is not in the virtual port range (%u-%u)", vport, OFPP_VP_START, OFPP_VP_END);
-		dp_send_error_msg(dp, sender, OFPET_BAD_ACTION, OFPET_VPORT_MOD_FAILED,
-		                  ovpm, ntohs(ovpm->header.length));
-		free_vport_table_entry(vpe); // free allocated entry
-		return EINVAL;
-	}
-
-	vpe->port_acts->actions_len = actions_len;
-	memcpy(vpe->port_acts->actions, ovpm->actions, actions_len);
-
-	error = insert_vport_table_entry(&dp->vport_table, vpe);
-	if (error) {
-		VLOG_ERR("could not insert port table entry for port %u\n", vport);
-	}
-
-    return error;
-
-}
-// MAH: end
 
 void
 dp_add_listen_pvconn(struct datapath *dp, struct pvconn *listen_pvconn)
@@ -556,7 +485,7 @@ void
 dp_output_port(struct datapath *dp, struct ofpbuf *buffer,
                int in_port, int out_port, bool ignore_no_fwd)
 {
-	struct sw_port *p;
+
     assert(buffer);
     if (out_port == OFPP_FLOOD) {
         output_all(dp, buffer, in_port, 1);
@@ -567,18 +496,10 @@ dp_output_port(struct datapath *dp, struct ofpbuf *buffer,
     } else if (out_port == OFPP_IN_PORT) {
         output_packet(dp, buffer, in_port);
     } else if (out_port == OFPP_TABLE) {
-        p = in_port < DP_MAX_PORTS ? &dp->ports[in_port] : 0;
+        struct sw_port *p = in_port < DP_MAX_PORTS ? &dp->ports[in_port] : 0;
 		if (run_flow_through_tables(dp, buffer, p)) {
 			ofpbuf_delete(buffer);
         }
-    }
-    // MAH: start
-    else if (out_port >= OFPP_VP_START && out_port <= OFPP_VP_END) {
-    	// port is a virtual port
-    	//printf("packet sent to virtual port %u\n", out_port);
-    	p = in_port < DP_MAX_PORTS ? &dp->ports[in_port] : 0;
-    	run_through_vport_table(dp, buffer, p, out_port);
-    	// MAH: end
     } else {
         if (in_port == out_port) {
             VLOG_DBG_RL(&rl, "can't directly forward to input port");
@@ -684,22 +605,6 @@ dp_send_features_reply(struct datapath *dp, const struct sender *sender)
     }
     send_openflow_buffer(dp, buffer, sender);
 }
-
-// MAH: start
-static void
-dp_send_vport_table_features(struct datapath *dp, const struct sender *sender)
-{
-	struct ofpbuf *buffer;
-	struct ofp_vport_table_features *ovtfr;
-	ovtfr = make_openflow_reply(sizeof *ovtfr, OFPT_VPORT_TABLE_FEATURES_REPLY,
-							    sender, &buffer);
-	ovtfr->actions = htonl(OFP_SUPPORTED_VPORT_TABLE_ACTIONS);
-	ovtfr->max_vports = htonl(dp->vport_table.max_vports);
-	ovtfr->max_chain_depth = htons(-1); // support a chain depth of 2^16
-	ovtfr->mixed_chaining = true;
-    send_openflow_buffer(dp, buffer, sender);
-}
-// MAH: end
 
 void
 dp_update_port_flags(struct datapath *dp, const struct ofp_port_mod *opm)
@@ -866,20 +771,6 @@ int run_flow_through_tables(struct datapath *dp, struct ofpbuf *buffer,
         ofpbuf_delete(buffer);
         return 0;
     }
-    // MAH: start
-    // drop MPLS packets with TTL 1
-    if (buffer->l2_5) {
-    	mpls_header mpls_h;
-    	mpls_h.value = ntohl(*((uint32_t*)buffer->l2_5));
-    	if (mpls_h.ttl == 1) {
-    		// delete packet buffer
-    		ofpbuf_delete(buffer);
-    		// increment mpls drop counter
-    		p->mpls_ttl0_dropped++;
-    		return 0;
-    	}
-    }
-    // MAH: end
 	if (p && p->config & (OFPPC_NO_RECV | OFPPC_NO_RECV_STP)
         && p->config & (!eth_addr_equals(key.flow.dl_dst, stp_eth_addr)
                        ? OFPPC_NO_RECV : OFPPC_NO_RECV_STP)) {
@@ -889,65 +780,14 @@ int run_flow_through_tables(struct datapath *dp, struct ofpbuf *buffer,
 
     flow = chain_lookup(dp->chain, &key);
     if (flow != NULL) {
-    	//printf("flow matched\n");
         flow_used(flow, buffer);
         execute_actions(dp, buffer, &key, flow->sf_acts->actions,
                         flow->sf_acts->actions_len, false);
         return 0;
     } else {
-    	//printf("flow not matched\n");
         return -ESRCH;
     }
 }
-
-// MAH: start
-int run_through_vport_table(struct datapath *dp, struct ofpbuf *buffer,
-						   struct sw_port *p, uint32_t vport)
-{
-	struct vport_table_entry *vpe;
-
-	// extract the flow again since we need it
-	// and the layer pointers may changed
-    struct sw_flow_key key;
-    key.wildcards = 0;
-    if (flow_extract(buffer, p ? port_no(dp, p) : OFPP_NONE, &key.flow)
-        && (dp->flags & OFPC_FRAG_MASK) == OFPC_FRAG_DROP) {
-        /* Drop fragment. */
-        ofpbuf_delete(buffer);
-        return 0;
-    }
-
-    // run through the chain of port table entries
-    vpe = vport_table_lookup(&dp->vport_table, vport);
-    dp->vport_table.lookup_count++;
-    if (vpe) dp->vport_table.port_match_count++;
-    while (vpe != NULL) {
-		execute_vport_actions(dp, buffer, &key, vpe->port_acts->actions,
-							vpe->port_acts->actions_len);
-		vport_used(vpe, buffer); // update counters for virtual port
-		if (vpe->parent_port_ptr == NULL) {
-			// if a port table's parent_port_ptr is NULL then
-			// the parent_port should be a physical port
-			if (vpe->parent_port <= OFPP_VP_START) {
-				// done traversing port chain, send packet to output port
-				dp_output_port(dp, buffer, p ? port_no(dp, p) : OFPP_NONE,
-							   vpe->parent_port, false);
-			} else {
-				VLOG_ERR("virtual port points to parent port\n");
-			}
-		} else {
-			// increment the number of port entries accessed by chaining
-			dp->vport_table.chain_match_count++;
-		}
-		// move to the parent port entry
-		vpe = vpe->parent_port_ptr;
-	}
-    // TODO: this is a little inefficient... the code always replicates a packet and deletes the original
-    ofpbuf_delete(buffer);
-
-	return 0;
-}
-// MAH: end
 
 /* 'buffer' was received on 'p', which may be a a physical switch port or a
  * null pointer.  Process it according to 'dp''s flow table, sending it up to
@@ -968,16 +808,6 @@ recv_features_request(struct datapath *dp, const struct sender *sender,
     dp_send_features_reply(dp, sender);
     return 0;
 }
-
-// MAH: start
-static int
-recv_vport_table_features_request(struct datapath *dp, const struct sender *sender,
-								  const void *msg)
-{
-	dp_send_vport_table_features(dp, sender);
-	return 0;
-}
-// MAH: end
 
 static int
 recv_get_config_request(struct datapath *dp, const struct sender *sender,
@@ -1068,29 +898,6 @@ recv_port_mod(struct datapath *dp, const struct sender *sender UNUSED,
     return 0;
 }
 
-// MAH: start
-/* add or remove a virtual port table entry */
-static int
-recv_vport_mod(struct datapath *dp, const struct sender *sender,
-              const void *msg)
-{
-    const struct ofp_vport_mod *ovpm = msg;
-
-    uint16_t command = ntohs(ovpm->command);
-
-    if (command == OFPVP_ADD) {
-        return dp_add_vport(dp, sender, ovpm);
-    } else if (command == OFPVP_DELETE) {
-		if (remove_vport_table_entry(&dp->vport_table, ntohl(ovpm->vport))) {
-			dp_send_error_msg(dp, sender, OFPET_BAD_ACTION, OFPET_VPORT_MOD_FAILED,
-							  ovpm, ntohs(ovpm->header.length));
-		}
-    }
-
-    return 0;
-}
-// MAH: end
-
 static int
 add_flow(struct datapath *dp, const struct sender *sender,
         const struct ofp_flow_mod *ofm)
@@ -1113,7 +920,6 @@ add_flow(struct datapath *dp, const struct sender *sender,
                   ofm, ntohs(ofm->header.length));
         goto error_free_flow;
     }
-
 
     /* Fill out flow. */
     flow->priority = flow->key.wildcards ? ntohs(ofm->priority) : -1;
@@ -1211,9 +1017,6 @@ recv_flow(struct datapath *dp, const struct sender *sender,
     const struct ofp_flow_mod *ofm = msg;
     uint16_t command = ntohs(ofm->command);
 
-    // MAH: start
-    //printf("recv_flow invoked\n");
-    // MAH: end
     if (command == OFPFC_ADD) {
         return add_flow(dp, sender, ofm);
     } else if ((command == OFPFC_MODIFY) || (command == OFPFC_MODIFY_STRICT)) {
@@ -1263,7 +1066,6 @@ static int flow_stats_init(struct datapath *dp, const void *body, int body_len,
 {
     const struct ofp_flow_stats_request *fsr = body;
     struct flow_stats_state *s = xmalloc(sizeof *s);
-
     s->table_idx = fsr->table_id == 0xff ? 0 : fsr->table_id;
     memset(&s->position, 0, sizeof s->position);
     s->rq = *fsr;
@@ -1285,9 +1087,7 @@ static int flow_stats_dump(struct datapath *dp, void *state,
     struct flow_stats_state *s = state;
     struct sw_flow_key match_key;
 
-
     flow_extract_match(&match_key, &s->rq.match);
-
     s->buffer = buffer;
     s->now = time_now();
     while (s->table_idx < dp->chain->n_tables
@@ -1394,47 +1194,15 @@ static int table_stats_dump(struct datapath *dp, void *state,
     return 0;
 }
 
-// MAH: start
-/* stats for the port table which is similar to stats for the flow tables */
-static int port_table_stats_dump(struct datapath *dp, void *state,
-                            struct ofpbuf *buffer)
-{
-
-	struct ofp_vport_table_stats *opts = ofpbuf_put_zeros(buffer, sizeof *opts);
-	opts->max_vports = htonl(dp->vport_table.max_vports);
-	opts->active_vports = htonl(dp->vport_table.active_vports);
-	opts->lookup_count = htonll(dp->vport_table.lookup_count);
-	opts->port_match_count = htonll(dp->vport_table.port_match_count);
-	opts->chain_match_count = htonll(dp->vport_table.chain_match_count);
-
-    return 0;
-}
-// MAH: end
-
-// MAH: start
-// allow stats to query for specific ports
 struct port_stats_state {
-	uint32_t num_ports; // host byte order
-	uint32_t *ports;    // array in network byte order
-};
-
-/*struct port_stats_state {
     int port;
-};*/
-
-// MAH: end
+};
 
 static int port_stats_init(struct datapath *dp, const void *body, int body_len,
                void **state)
 {
     struct port_stats_state *s = xmalloc(sizeof *s);
-    // MAH: start
-    // the body contains a list of port numbers
-    s->ports = xmalloc(body_len);
-    memcpy(s->ports, body, body_len);
-    s->num_ports = body_len/sizeof(uint32_t);
-    //s->port = 0;
-    // MAH: end
+    s->port = 0;
     *state = s;
     return 0;
 }
@@ -1443,67 +1211,8 @@ static int port_stats_dump(struct datapath *dp, void *state,
                            struct ofpbuf *buffer)
 {
     struct port_stats_state *s = state;
-    struct ofp_port_stats *ops;
-    uint32_t port;
     int i;
 
-    // MAH: start
-    // port stats are different depending on whether port is physical or virtual
-    for (i = 0; i < s->num_ports; i++) {
-    	port = ntohl(s->ports[i]);
-    	// physical port?
-    	if (port <= OFPP_MAX) {
-			struct sw_port *p = &dp->ports[port];
-
-			if (!p->netdev) {
-				continue;
-			}
-			ops = ofpbuf_put_zeros(buffer, sizeof *ops);
-			ops->port_no = htonl(port_no(dp, p));
-			ops->rx_packets   = htonll(p->rx_packets);
-			ops->tx_packets   = htonll(p->tx_packets);
-			ops->rx_bytes     = htonll(p->rx_bytes);
-			ops->tx_bytes     = htonll(p->tx_bytes);
-			ops->rx_dropped   = htonll(-1);
-			ops->tx_dropped   = htonll(p->tx_dropped);
-			ops->rx_errors    = htonll(-1);
-			ops->tx_errors    = htonll(-1);
-			ops->rx_frame_err = htonll(-1);
-			ops->rx_over_err  = htonll(-1);
-			ops->rx_crc_err   = htonll(-1);
-			ops->collisions   = htonll(-1);
-			ops->mpls_ttl0_dropped = htonll(p->mpls_ttl0_dropped);
-			ops++;
-    	} // virtual port?
-    	else if (port >= OFPP_VP_START && port <= OFPP_VP_END) {
-    		// lookup the virtual port
-    		struct vport_table_entry *vpe = vport_table_lookup(&dp->vport_table, port);
-    		if (vpe == NULL) {
-    			VLOG_ERR("port_stats_dump: vport entry not found!");
-    			continue;
-    		}
-    		// only tx_packets and tx_bytes are really relevant for virtual ports
-    		ops = ofpbuf_put_zeros(buffer, sizeof *ops);
-    		ops->port_no = htonl(vpe->vport);
-			ops->rx_packets   = htonll(-1);
-			ops->tx_packets   = htonll(vpe->packet_count);
-			ops->rx_bytes     = htonll(-1);
-			ops->tx_bytes     = htonll(vpe->byte_count);
-			ops->rx_dropped   = htonll(-1);
-			ops->tx_dropped   = htonll(-1);
-			ops->rx_errors    = htonll(-1);
-			ops->tx_errors    = htonll(-1);
-			ops->rx_frame_err = htonll(-1);
-			ops->rx_over_err  = htonll(-1);
-			ops->rx_crc_err   = htonll(-1);
-			ops->collisions   = htonll(-1);
-			ops->mpls_ttl0_dropped = htonll(-1);
-			ops++;
-    	}
-
-    }
-/*
-    printf("s->port = %u\n", s->port);
     for (i = s->port; i < DP_MAX_PORTS; i++) {
         struct sw_port *p = &dp->ports[i];
         struct ofp_port_stats *ops;
@@ -1527,17 +1236,11 @@ static int port_stats_dump(struct datapath *dp, void *state,
         ops++;
     }
     s->port = i;
-    */
-    // MAH: end
     return 0;
 }
 
 static void port_stats_done(void *state)
 {
-	// MAH: start
-	struct port_stats_state *s = (struct port_stats_state *)state;
-	free(s->ports);
-	// MAH: stop
     free(state);
 }
 
@@ -1604,25 +1307,11 @@ static const struct stats_type stats[] = {
     {
         OFPST_PORT,
         0,
-        // MAH: start
-        // support a list of port numbers
-        SIZE_MAX,
-        //0,
-        // MAH: end
+        0,
         port_stats_init,
         port_stats_dump,
         port_stats_done
     },
-    // MAH: start
-    {
-		OFPST_PORT_TABLE,
-    	0,
-    	0,
-    	NULL,
-    	port_table_stats_dump,
-    	NULL
-    }
-    // MAH: end
 };
 
 struct stats_dump_cb {
@@ -1806,16 +1495,6 @@ fwd_control_input(struct datapath *dp, const struct sender *sender,
         min_size = sizeof(struct ofp_header);
         handler = recv_echo_reply;
         break;
-    // MAH: start
-    case OFPT_VPORT_MOD:
-    	min_size = sizeof(struct ofp_vport_mod);
-    	handler = recv_vport_mod;
-    	break;
-    case OFPT_VPORT_TABLE_FEATURES_REQUEST:
-    	min_size = sizeof(struct ofp_header);
-    	handler = recv_vport_table_features_request;
-    	break;
-    // MAH: end
     default:
         dp_send_error_msg(dp, sender, OFPET_BAD_REQUEST, OFPBRC_BAD_TYPE,
                           msg, length);
@@ -1868,7 +1547,7 @@ uint32_t save_buffer(struct ofpbuf *buffer)
     return id;
 }
 
-struct ofpbuf *retrieve_buffer(uint32_t id)
+static struct ofpbuf *retrieve_buffer(uint32_t id)
 {
     struct ofpbuf *buffer = NULL;
     struct packet_buffer *p;
@@ -1885,7 +1564,7 @@ struct ofpbuf *retrieve_buffer(uint32_t id)
     return buffer;
 }
 
-void discard_buffer(uint32_t id)
+static void discard_buffer(uint32_t id)
 {
     struct packet_buffer *p;
 

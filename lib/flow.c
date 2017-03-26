@@ -44,15 +44,6 @@
 #include "vlog.h"
 #define THIS_MODULE VLM_flow
 
-// MAH: start
-// function below grabs the MPLS label(s)
-static mpls_header *
-pull_mpls(struct ofpbuf *packet)
-{
-	return ofpbuf_try_pull(packet, MPLS_HEADER_LEN);
-}
-// MAH: end
-
 static struct ip_header *
 pull_ip(struct ofpbuf *packet)
 {
@@ -110,9 +101,6 @@ flow_extract(struct ofpbuf *packet, uint16_t in_port, struct flow *flow)
     struct ofpbuf b = *packet;
     struct eth_header *eth;
     int retval = 0;
-    // MAH: start
-    mpls_header mpls_h;
-    // MAH: end
 
     if (b.size < ETH_TOTAL_MIN) {
         /* This message is not too useful since there are various ways that we
@@ -168,35 +156,8 @@ flow_extract(struct ofpbuf *packet, uint16_t in_port, struct flow *flow)
         memcpy(flow->dl_src, eth->eth_src, ETH_ADDR_LEN);
         memcpy(flow->dl_dst, eth->eth_dst, ETH_ADDR_LEN);
 
-        // MAH: start
-        // If the packet is MPLS, the flow can include up to the first 2 MPLS labels in the
-        // packet's label stack
-        // Note that out of convenience we keep the MPLS labels in host byte order
-        packet->l2_5 = b.data; // if no MPLS header l2.5 will = l3
-        flow->mpls_label1 = htonl(MPLS_INVALID_LABEL);
-        flow->mpls_label2 = htonl(MPLS_INVALID_LABEL);
-        if (flow->dl_type == htons(ETH_TYPE_MPLS_UNICAST)) {
-           mpls_h.value = ntohl(pull_mpls(&b)->value);
-           flow->mpls_label1 = htonl(mpls_h.label);
-           if (!(mpls_h.s)) {// another label exists
-        	   mpls_h.value = ntohl(pull_mpls(&b)->value);
-        	   flow->mpls_label2 = htonl(mpls_h.label);
-           }
-           // move past the remaining labels to get to l3
-           while(!mpls_h.s) {
-        	   mpls_h.value = ntohl(pull_mpls(&b)->value);
-           }
-        }
         packet->l3 = b.data;
-        // MAH: end
-        // MAH: start
-        // Since the ethertype is MPLS we don't know whether layer 3 is IP or not
-        // assume it is and fill out the rest of the key accordingly and if it's not IP
-        // the fields will be garbage so the controller will need to wildcard the fields
-        //if (flow->dl_type == htons(ETH_TYPE_IP)) {
-        if (flow->dl_type == htons(ETH_TYPE_IP) ||
-			flow->dl_type == htons(ETH_TYPE_MPLS_UNICAST)) {
-        // MAH: end
+        if (flow->dl_type == htons(ETH_TYPE_IP)) {
             const struct ip_header *nh = pull_ip(&b);
             if (nh) {
                 flow->nw_src = nh->ip_src;
@@ -258,16 +219,6 @@ flow_print(FILE *stream, const struct flow *flow)
             ntohs(flow->dl_type),
             IP_ARGS(&flow->nw_src), IP_ARGS(&flow->nw_dst),
             ntohs(flow->tp_src), ntohs(flow->tp_dst));
-    // MAH: start
-    // Note that MPLS labels are kept in host byte order
-    // print MPLS labels.
-    if (flow->mpls_label2 >= 0x100000){
-    	// No valid second mpls label
-    	fprintf(stream, " mpls_l1 %u mpls_l2 NONE ", flow->mpls_label1);
-    } else {
-    	fprintf(stream, " mpls_l1 %u mpls_l2 %u ", flow->mpls_label1, flow->mpls_label2);
-    }
-    // MAH: end
 }
 
 int

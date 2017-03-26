@@ -23,8 +23,6 @@ lib_libopenflow_a_SOURCES = \
 	lib/fault.h \
 	lib/flow.c \
 	lib/flow.h \
-	lib/freelist.c \
-	lib/freelist.h \
 	lib/hash.c \
 	lib/hash.h \
 	lib/learning-switch.c \
@@ -33,12 +31,6 @@ lib_libopenflow_a_SOURCES = \
 	lib/list.h \
 	lib/mac-learning.c \
 	lib/mac-learning.h \
-	lib/misc.c \
-	lib/misc.h \
-	lib/mpls-fib.c \
-	lib/mpls-fib.h \
-	lib/mpls-switch.c \
-	lib/mpls-switch.h \
 	lib/netdev.c \
 	lib/netdev.h \
 	lib/ofp-print.c \
@@ -54,17 +46,11 @@ lib_libopenflow_a_SOURCES = \
 	lib/queue.h \
 	lib/random.c \
 	lib/random.h \
-	lib/read-mpls-fib.c \
-	lib/read-mpls-fib.h \
-	lib/red-black-tree.c \
-	lib/red-black-tree.h \
 	lib/rconn.c \
 	lib/rconn.h \
 	lib/sat-math.h \
 	lib/socket-util.c \
 	lib/socket-util.h \
-	lib/stack.c \
-	lib/stack.h \
 	lib/stp.c \
 	lib/stp.h \
 	lib/timeval.c \
@@ -72,8 +58,6 @@ lib_libopenflow_a_SOURCES = \
 	lib/type-props.h \
 	lib/util.c \
 	lib/util.h \
-	lib/vconn-mpls.c \
-	lib/vocnn-mpls.h \
 	lib/vconn-provider.h \
 	lib/vconn-ssl.h \
 	lib/vconn-stream.c \
@@ -101,7 +85,7 @@ endif
 
 if HAVE_OPENSSL
 lib_libopenflow_a_SOURCES += \
-	lib/vconn-ssl.c 
+	lib/vconn-ssl.c
 nodist_lib_libopenflow_a_SOURCES = lib/dhparams.c
 lib/dhparams.c: lib/dh1024.pem lib/dh2048.pem lib/dh4096.pem
 	(echo '#include "lib/dhparams.h"' &&				\

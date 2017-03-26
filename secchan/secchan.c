@@ -352,7 +352,7 @@ get_ofp_packet_eth_header(struct relay *r, struct ofp_packet_in **opip,
     }
     return false;
 }
-
+
 /* OpenFlow message relaying. */
 
 /* Returns a malloc'd string containing a copy of 'vconn_name' modified not to
@@ -551,7 +551,7 @@ relay_destroy(struct relay *r)
     }
     free(r);
 }
-
+
 /* User interface. */
 
 static void

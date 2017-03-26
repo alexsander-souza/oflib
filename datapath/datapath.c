@@ -241,6 +241,7 @@ static int new_dp(int dp_idx)
 {
 	struct datapath *dp;
 	int err;
+
 	if (dp_idx < 0 || dp_idx >= DP_MAX)
 		return -EINVAL;
 
@@ -277,12 +278,6 @@ static int new_dp(int dp_idx)
 
 	dp->flags = 0;
 	dp->miss_send_len = OFP_DEFAULT_MISS_SEND_LEN;
-
-    // MAH: start
-    // Initialize port table
-    vport_table_init(&dp->vport_table);
-    // MAH: end
-
 
 	dp->dp_task = kthread_run(dp_maint_func, dp, "dp%d", dp_idx);
 	if (IS_ERR(dp->dp_task))
@@ -363,10 +358,6 @@ int add_switch_port(struct datapath *dp, struct net_device *dev)
 		return PTR_ERR(p);
 
 	init_port_status(p);
-
-	// MAH: start
-	p->mpls_ttl0_dropped = 0;
-	// MAH: end
 
 	/* Notify the ctlpath that this port has been added */
 	dp_send_port_status(p, OFPPR_ADD);
@@ -652,17 +643,6 @@ int dp_output_port(struct datapath *dp, struct sk_buff *skb, int out_port,
 		return dp_xmit_skb(skb);
 	}
 
-	// MAH: start
-	case OFPP_VP_START ... OFPP_VP_END: {
-    	// port is a virtual port
-		// run_through_vport_table will free skb
-    	run_through_vport_table(dp->chain, skb, skb->dev->br_port, out_port);
-    	return 0;
-    	// MAH: end
-	}
-
-	// MAH: end
-
 	default:
 		goto bad_port;
 	}
@@ -866,28 +846,6 @@ dp_send_features_reply(struct datapath *dp, const struct sender *sender)
 	resize_openflow_skb(skb, &ofr->header, ofr_len);
 	return send_openflow_skb(skb, sender);
 }
-
-// MAH: start
-int
-dp_send_vport_table_features(struct datapath *dp, const struct sender *sender)
-{
-	struct sk_buff *skb;
-	struct ofp_vport_table_features *ovtfr;
-
-	//printk("dp_send_vport_table_features invoked\n");
-
-	ovtfr = alloc_openflow_skb(dp, sizeof(*ovtfr),
-				OFPT_VPORT_TABLE_FEATURES_REPLY, sender, &skb);
-	if (!ovtfr)
-		return -ENOMEM;
-
-	ovtfr->actions = htonl(OFP_SUPPORTED_VPORT_TABLE_ACTIONS);
-	ovtfr->max_vports = htonl(dp->vport_table.max_vports);
-	ovtfr->max_chain_depth = htons(-1); // support a chain depth of 2^16
-	ovtfr->mixed_chaining = true; 		// supports chaining virtual ports with different actions
-	return send_openflow_skb(skb, sender);
-}
-// MAH: end
 
 int
 dp_send_config_reply(struct datapath *dp, const struct sender *sender)
@@ -1528,203 +1486,65 @@ static int table_stats_dump(struct datapath *dp, void *state,
 	return 0;
 }
 
-// MAH: start
-/* stats for the port table which is similar to stats for the flow tables */
-static int port_table_stats_dump(struct datapath *dp, void *state,
-								 void *body, int *body_len)
-{
-	//printk("port_table_stats_dump invoked\n");
-	struct ofp_vport_table_stats *opts;
-	int n_bytes = sizeof *opts;
-	if (n_bytes > *body_len)
-		return -ENOBUFS;
-	*body_len = n_bytes;
-	opts = body;
-
-	opts->max_vports = htonl(dp->vport_table.max_vports);
-	opts->active_vports = htonl(dp->vport_table.active_vports);
-	opts->lookup_count = cpu_to_be64(dp->vport_table.lookup_count);
-	opts->port_match_count = cpu_to_be64(dp->vport_table.port_match_count);
-	opts->chain_match_count = cpu_to_be64(dp->vport_table.chain_match_count);
-
-    return 0;
-}
-// MAH: end
-
-// MAH: start
-// allow stats to query for specific ports
 struct port_stats_state {
-	uint32_t num_ports; // host byte order
-	uint32_t *ports;	// array in network byte order
-};
-
-/*struct port_stats_state {
 	int port;
-};*/
-
-// MAH: end
-
-
+};
 
 static int port_stats_init(struct datapath *dp, const void *body, int body_len,
 			   void **state)
 {
-	// MAH: start
-	// the body contains a list of port numbers
-
-	struct port_stats_state *s = kmalloc(sizeof *s, GFP_ATOMIC);
-	if (!s) return -ENOMEM;
-	s->ports = kmalloc(body_len, GFP_ATOMIC);
-	memcpy(s->ports, body, body_len);
-	s->num_ports = body_len/sizeof(uint32_t);
-	*state = s;
-
-	/*
 	struct port_stats_state *s = kmalloc(sizeof *s, GFP_ATOMIC);
 	if (!s)
 		return -ENOMEM;
 	s->port = 0;
 	*state = s;
-	*/
-	// MAH: end
 	return 0;
 }
 
-// MAH: start
 static int port_stats_dump(struct datapath *dp, void *state,
-						   void *body, int *body_len)
+			   void *body, int *body_len)
 {
-
 	struct port_stats_state *s = state;
 	struct ofp_port_stats *ops;
 	int n_ports, max_ports;
-	uint32_t port;
 	int i;
 
 	max_ports = *body_len / sizeof *ops;
-    if (!max_ports)
-             return -ENOMEM;
-    ops = body;
-
-    // error if body_len isn't long enough for the requested ports
-    if (max_ports < s->num_ports)
-    	return -ENOMEM;
+	if (!max_ports)
+		return -ENOMEM;
+	ops = body;
 
 	n_ports = 0;
-	for (i = 0; i < s->num_ports; i++) {
-		port = ntohl(s->ports[i]);
-    	// physical port?
-    	if (port <= OFPP_MAX) {
-    	// MAH: end
-    		struct net_bridge_port *p = dp->ports[i];
-    		struct net_device_stats *stats;
-    		if (!p)
-    			continue;
-    		stats = p->dev->get_stats(p->dev);
-    		ops->port_no = htonl(p->port_no);
-    		memset(ops->pad, 0, sizeof ops->pad);
-    		ops->rx_packets   = cpu_to_be64(stats->rx_packets);
-    		ops->tx_packets   = cpu_to_be64(stats->tx_packets);
-    		ops->rx_bytes     = cpu_to_be64(stats->rx_bytes);
-    		ops->tx_bytes     = cpu_to_be64(stats->tx_bytes);
-    		ops->rx_dropped   = cpu_to_be64(stats->rx_dropped);
-    		ops->tx_dropped   = cpu_to_be64(stats->tx_dropped);
-    		ops->rx_errors    = cpu_to_be64(stats->rx_errors);
-    		ops->tx_errors    = cpu_to_be64(stats->tx_errors);
-    		ops->rx_frame_err = cpu_to_be64(stats->rx_frame_errors);
-    		ops->rx_over_err  = cpu_to_be64(stats->rx_over_errors);
-    		ops->rx_crc_err   = cpu_to_be64(stats->rx_crc_errors);
-    		ops->collisions   = cpu_to_be64(stats->collisions);
-    		ops->mpls_ttl0_dropped = cpu_to_be64(p->mpls_ttl0_dropped);
-    		n_ports++;
-    		ops++;
-    	} else if (port >= OFPP_VP_START && port <= OFPP_VP_END) {
-    		// virtual port
-    		// lookup the virtual port
-    		struct vport_table_entry *vpe = vport_table_lookup(&dp->vport_table, port);
-    		if (vpe == NULL) {
-    			printk("port_stats_dump: virtual port %u not found!\n", port);
-    			return 0;
-    			continue; // XXX TODO: error handling?
-    		}
-    		ops->port_no = 	htonl(vpe->vport);
-    		memset(ops->pad, 0, sizeof ops->pad);
-    		ops->rx_packets   = cpu_to_be64(-1);
-    		ops->tx_packets   = cpu_to_be64(vpe->packet_count);
-    		ops->rx_bytes     = cpu_to_be64(-1);
-    		ops->tx_bytes     = cpu_to_be64(vpe->byte_count);
-    		ops->rx_dropped   = cpu_to_be64(-1);
-    		ops->tx_dropped   = cpu_to_be64(-1);
-    		ops->rx_errors    = cpu_to_be64(-1);
-    		ops->tx_errors    = cpu_to_be64(-1);
-    		ops->rx_frame_err = cpu_to_be64(-1);
-    		ops->rx_over_err  = cpu_to_be64(-1);
-    		ops->rx_crc_err   = cpu_to_be64(-1);
-    		ops->collisions   = cpu_to_be64(-1);
-    		ops->mpls_ttl0_dropped = cpu_to_be64(-1);
-    		n_ports++;
-    		ops++;
-    	} else {
-    		printk("port_stats_dump: bad port number %u\n", port);
-    		return 0; // XXX replace with propper error handling
-    	}
+	for (i = s->port; i < DP_MAX_PORTS && n_ports < max_ports; i++) {
+		struct net_bridge_port *p = dp->ports[i];
+		struct net_device_stats *stats;
+		if (!p)
+			continue;
+		stats = p->dev->get_stats(p->dev);
+		ops->port_no = htons(p->port_no);
+		memset(ops->pad, 0, sizeof ops->pad);
+		ops->rx_packets   = cpu_to_be64(stats->rx_packets);
+		ops->tx_packets   = cpu_to_be64(stats->tx_packets);
+		ops->rx_bytes     = cpu_to_be64(stats->rx_bytes);
+		ops->tx_bytes     = cpu_to_be64(stats->tx_bytes);
+		ops->rx_dropped   = cpu_to_be64(stats->rx_dropped);
+		ops->tx_dropped   = cpu_to_be64(stats->tx_dropped);
+		ops->rx_errors    = cpu_to_be64(stats->rx_errors);
+		ops->tx_errors    = cpu_to_be64(stats->tx_errors);
+		ops->rx_frame_err = cpu_to_be64(stats->rx_frame_errors);
+		ops->rx_over_err  = cpu_to_be64(stats->rx_over_errors);
+		ops->rx_crc_err   = cpu_to_be64(stats->rx_crc_errors);
+		ops->collisions   = cpu_to_be64(stats->collisions);
+		n_ports++;
+		ops++;
 	}
+	s->port = i;
 	*body_len = n_ports * sizeof *ops;
-	return n_ports != s->num_ports;
-
+	return n_ports >= max_ports;
 }
-/*
-static int port_stats_dump(struct datapath *dp, void *state,
-                           void *body, int *body_len)
-{
-        struct port_stats_state *s = state;
-        struct ofp_port_stats *ops;
-        int n_ports, max_ports;
-        int i;
-
-        max_ports = *body_len / sizeof *ops;
-        if (!max_ports)
-                return -ENOMEM;
-        ops = body;
-
-        n_ports = 0;
-        for (i = s->port; i < DP_MAX_PORTS && n_ports < max_ports; i++) {
-                struct net_bridge_port *p = dp->ports[i];
-                struct net_device_stats *stats;
-                if (!p)
-                        continue;
-                stats = p->dev->get_stats(p->dev);
-                ops->port_no = htons(p->port_no);
-                memset(ops->pad, 0, sizeof ops->pad);
-                ops->rx_packets   = cpu_to_be64(stats->rx_packets);
-                ops->tx_packets   = cpu_to_be64(stats->tx_packets);
-                ops->rx_bytes     = cpu_to_be64(stats->rx_bytes);
-                ops->tx_bytes     = cpu_to_be64(stats->tx_bytes);
-                ops->rx_dropped   = cpu_to_be64(stats->rx_dropped);
-                ops->tx_dropped   = cpu_to_be64(stats->tx_dropped);
-                ops->rx_errors    = cpu_to_be64(stats->rx_errors);
-                ops->tx_errors    = cpu_to_be64(stats->tx_errors);
-                ops->rx_frame_err = cpu_to_be64(stats->rx_frame_errors);
-                ops->rx_over_err  = cpu_to_be64(stats->rx_over_errors);
-                ops->rx_crc_err   = cpu_to_be64(stats->rx_crc_errors);
-                ops->collisions   = cpu_to_be64(stats->collisions);
-                n_ports++;
-                ops++;
-        }
-        s->port = i;
-        *body_len = n_ports * sizeof *ops;
-        return n_ports >= max_ports;
-}
-*/
-// MAH: end
-
 
 static void port_stats_done(void *state)
 {
-	// MAH: start
-	struct port_stats_state *s = (struct port_stats_state *)state;
-	kfree(s->ports);
-	// MAH: stop
 	kfree(state);
 }
 
@@ -1783,25 +1603,12 @@ static const struct stats_type stats[] = {
 		NULL
 	},
 	[OFPST_PORT] = {
-        0,
-        // MAH: start
-        // body is now a list of port numbers
-        UINT16_MAX,
-        //0,
-        // MAH: end
-        port_stats_init,
-        port_stats_dump,
-        port_stats_done
-    },
-    // MAH: start
-    [OFPST_PORT_TABLE] = {
-    	0,
-    	0,
-    	NULL,
-    	port_table_stats_dump,
-    	NULL
-    }
-    // MAH: end
+		0,
+		0,
+		port_stats_init,
+		port_stats_dump,
+		port_stats_done
+	},
 };
 
 static int

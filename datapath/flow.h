@@ -2,7 +2,6 @@
 #define FLOW_H 1
 
 #include <linux/kernel.h>
-#include <asm/byteorder.h>
 #include <linux/spinlock.h>
 #include <linux/list.h>
 #include <linux/types.h>
@@ -11,41 +10,7 @@
 #include <linux/skbuff.h>
 #include <linux/if_ether.h>
 
-
 #include "openflow/openflow.h"
-
-// MAH: start
-
-#define ETH_TYPE_MPLS_UNICAST  	0x8847
-#define ETH_TYPE_MPLS_MULTICAST 0x8848
-
-// MPLS header
-#define MPLS_INVALID_LABEL	0xFFFFFFFF
-
-#define MPLS_HEADER_LEN 4
-typedef union
-{
-        struct
-        {
-		#ifdef __BIG_ENDIAN
-         uint32_t	label:20;
-         uint8_t	exp:3;
-         uint8_t	s:1;
-         uint8_t	ttl:8;
-        #else
-         uint8_t	ttl:8;
-         uint8_t 	s:1;
-         uint8_t	exp:3;
-         uint32_t	label:20;
-        #endif
-        };
-        uint32_t value;
-} mpls_header;
-// MAH: end
-
-// MAH: start
-void set_ethertype(struct sk_buff *skb, uint16_t eth_type);
-// MAH: end
 
 struct sk_buff;
 struct ofp_flow_mod;
@@ -72,12 +37,6 @@ struct sw_flow_key {
 	uint32_t wildcards;	/* Wildcard fields (host byte order). */
 	uint32_t nw_src_mask;	/* 1-bit in each significant nw_src bit. */
 	uint32_t nw_dst_mask;	/* 1-bit in each significant nw_dst bit. */
-    // MAH: start
-    // Add support for two MPLS labels to the flow table.
-    // note: leave the above reserved field to preserve 32-bit alignment
-    uint32_t mpls_label1;		/* Top of label stack */
-    uint32_t mpls_label2;		/* Second label (if available)*/
-    // MAH: end
 };
 
 /* The match fields for ICMP type and code use the transport source and
@@ -99,10 +58,7 @@ static inline int flow_keys_equal(const struct sw_flow_key *a,
  */
 static inline void check_key_align(void)
 {
-	// MAH: start
-	BUILD_BUG_ON(sizeof(struct sw_flow_key) != 52);
-	//BUILD_BUG_ON(sizeof(struct sw_flow_key) != 44);
-	// MAH: end
+	BUILD_BUG_ON(sizeof(struct sw_flow_key) != 44); 
 }
 
 /* We keep actions as a separate structure because we need to be able to
@@ -161,11 +117,8 @@ int flow_extract(struct sk_buff *, uint16_t in_port, struct sw_flow_key *);
 void flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from);
 void flow_fill_match(struct ofp_match* to, const struct sw_flow_key* from);
 int flow_timeout(struct sw_flow *);
-void print_flow(const struct sw_flow_key *);
 
-// MAH: start
-char * mpls_hdr(const struct sk_buff *skb);
-// MAH: end
+void print_flow(const struct sw_flow_key *);
 
 static inline void flow_used(struct sw_flow *flow, struct sk_buff *skb)
 {

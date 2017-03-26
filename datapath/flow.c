@@ -41,14 +41,7 @@ int flow_fields_match(const struct sw_flow_key *a, const struct sw_flow_key *b,
 		&& !((a->nw_dst ^ b->nw_dst) & dst_mask)
 		&& (w & OFPFW_NW_PROTO || a->nw_proto == b->nw_proto)
 		&& (w & OFPFW_TP_SRC || a->tp_src == b->tp_src)
-		&& (w & OFPFW_TP_DST || a->tp_dst == b->tp_dst)
-	    // MAH: start
-	    // match on the 2 MPLS labels as well
-	    // use a wildcard for label 2 when there is only one MPLS label
-		///);
-		&& (w & OFPFW_MPLS_L1 || a->mpls_label1 == b->mpls_label1)
-		&& (w & OFPFW_MPLS_L2 || a->mpls_label2 == b->mpls_label2));
-	    // MAH: end
+		&& (w & OFPFW_TP_DST || a->tp_dst == b->tp_dst));
 }
 
 /* Returns nonzero if 'a' and 'b' match, that is, if their fields are equal
@@ -97,17 +90,6 @@ void flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from)
 {
 	to->wildcards = ntohl(from->wildcards) & OFPFW_ALL;
 	to->pad = 0;
-	// MAH: start
-#define OFPFW_MPLS (OFPFW_MPLS_L1 | OFPFW_MPLS_L2)
-	to->mpls_label1 = from->mpls_label1;
-	to->mpls_label2 = from->mpls_label2;
-	if (to->mpls_label1 == htonl(MPLS_INVALID_LABEL)) {
-		to->wildcards ^= OFPFW_MPLS_L1;
-		if (to->mpls_label2 == htonl(MPLS_INVALID_LABEL)) {
-			to->wildcards ^= OFPFW_MPLS_L2;
-		}
-	}
-	// MAH: end
 	to->in_port = from->in_port;
 	to->dl_vlan = from->dl_vlan;
 	memcpy(to->dl_src, from->dl_src, ETH_ALEN);
@@ -122,18 +104,8 @@ void flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from)
 	if (to->wildcards & OFPFW_DL_TYPE) {
 		/* Can't sensibly match on network or transport headers if the
 		 * data link type is unknown. */
-		// MAH: start
-		to->wildcards |= OFPFW_NW | OFPFW_TP | OFPFW_MPLS;
-		//to->wildcards |= OFPFW_NW | OFPFW_TP;
-		// MAH: end
-	} // MAH: start
-    // Since the ethertype is MPLS we don't know whether layer 3 is IP or not
-    // assume it is and fill out the rest of the key accordingly and if it's not IP
-    // the fields will be garbage so the controller will need to wildcard the fields
-	//else if (from->dl_type == htons(ETH_P_IP)) {
-	else if (from->dl_type == htons(ETH_P_IP) ||
-			 from->dl_type == htons(ETH_TYPE_MPLS_UNICAST)) {
-	// MAH: end
+		to->wildcards |= OFPFW_NW | OFPFW_TP;
+	} else if (from->dl_type == htons(ETH_P_IP)) {
 		to->nw_src   = from->nw_src;
 		to->nw_dst   = from->nw_dst;
 		to->nw_proto = from->nw_proto;
@@ -172,10 +144,6 @@ void flow_fill_match(struct ofp_match* to, const struct sw_flow_key* from)
 	to->dl_vlan   = from->dl_vlan;
 	memcpy(to->dl_src, from->dl_src, ETH_ALEN);
 	memcpy(to->dl_dst, from->dl_dst, ETH_ALEN);
-	// MAH: start
-	to->mpls_label1 = from->mpls_label1;
-	to->mpls_label2 = from->mpls_label2;
-	// MAH: end
 	to->dl_type   = from->dl_type;
 	to->nw_src    = from->nw_src;
 	to->nw_dst    = from->nw_dst;
@@ -320,8 +288,6 @@ void flow_replace_acts(struct sw_flow *flow,
 EXPORT_SYMBOL(flow_replace_acts);
 
 /* Prints a representation of 'key' to the kernel log. */
-// MAH: start
-/*
 void print_flow(const struct sw_flow_key *key)
 {
 	printk("wild%08x port%04x:vlan%04x mac%02x:%02x:%02x:%02x:%02x:%02x"
@@ -343,31 +309,6 @@ void print_flow(const struct sw_flow_key *key)
 			((unsigned char *)&key->nw_dst)[3],
 			ntohs(key->tp_src), ntohs(key->tp_dst));
 }
-*/
-void print_flow(const struct sw_flow_key *f)
-{
-	    printk("wild%08x port%04x:vlan%04x mac%02x:%02x:%02x:%02x:%02x:%02x"
-	           "->%02x:%02x:%02x:%02x:%02x:%02x mpls_l1:%05x mpls_l2:%05x "
-	           "proto%04x ip%u.%u.%u.%u->%u.%u.%u.%u port%d->%d\n",
-	           f->wildcards, ntohs(f->in_port), ntohs(f->dl_vlan),
-	           f->dl_src[0], f->dl_src[1], f->dl_src[2],
-	           f->dl_src[3], f->dl_src[4], f->dl_src[5],
-	           f->dl_dst[0], f->dl_dst[1], f->dl_dst[2],
-	           f->dl_dst[3], f->dl_dst[4], f->dl_dst[5],
-	           ntohl(f->mpls_label1), ntohl(f->mpls_label2),
-	           ntohs(f->dl_type),
-	           ((unsigned char *)&f->nw_src)[0],
-	           ((unsigned char *)&f->nw_src)[1],
-	           ((unsigned char *)&f->nw_src)[2],
-	           ((unsigned char *)&f->nw_src)[3],
-	           ((unsigned char *)&f->nw_dst)[0],
-	           ((unsigned char *)&f->nw_dst)[1],
-	           ((unsigned char *)&f->nw_dst)[2],
-	           ((unsigned char *)&f->nw_dst)[3],
-	           ntohs(f->tp_src), ntohs(f->tp_dst));
-}
-// MAH: end
-
 EXPORT_SYMBOL(print_flow);
 
 #define SNAP_OUI_LEN 3
@@ -433,11 +374,6 @@ int flow_extract(struct sk_buff *skb, uint16_t in_port,
 	struct eth_snap_hdr *esh;
 	int retval = 0;
 	int nh_ofs;
-	// MAH: start
-	mpls_header mpls_h;
-	//printk("flow_extract invoked\n");
-	//printk("skb->head = %x skb->data = %x headroom = %u\n", skb->head, skb->data, (uint8_t*)skb->data - (uint8_t*)skb->head);
-	// MAH: end
 
 	memset(key, 0, sizeof *key);
 	key->dl_vlan = htons(OFP_VLAN_NONE);
@@ -465,10 +401,6 @@ int flow_extract(struct sk_buff *skb, uint16_t in_port,
 		}
 	}
 
-	// MAH: start
-	key->mpls_label1 = htonl(MPLS_INVALID_LABEL);
-	key->mpls_label2 = htonl(MPLS_INVALID_LABEL);
-	// MAH: end
 	/* Check for a VLAN tag */
 	if (key->dl_type == htons(ETH_P_8021Q) &&
 	    skb->len >= nh_ofs + sizeof(struct vlan_hdr)) {
@@ -477,31 +409,9 @@ int flow_extract(struct sk_buff *skb, uint16_t in_port,
 		key->dl_vlan = vh->h_vlan_TCI & htons(VLAN_VID_MASK);
 		nh_ofs += sizeof(struct vlan_hdr);
 	}
-	// MAH: start
-	else if (key->dl_type == ntohs(ETH_TYPE_MPLS_UNICAST)) {
-		// MPLS label stack will start at data + nh_ofs
-		mpls_h.value = ntohl(*((uint32_t*)(skb->data + nh_ofs)));
-		key->mpls_label1 = htonl(mpls_h.label);
-		// after every MPLS label we read, increment nh_ofs by 4
-		nh_ofs += 4;
-		// if there's a second label
-		if (!mpls_h.s) {
-			mpls_h.value = ntohl(*((uint32_t*)(skb->data + nh_ofs)));
-			nh_ofs += 4;
-			key->mpls_label2 = htonl(mpls_h.label);
-		}
-		// move past any remaining labels in the label stack
-		while (!mpls_h.s) {
-			mpls_h.value = ntohl(*((uint32_t*)(skb->data + nh_ofs)));
-			nh_ofs += 4;
-		}
-	}
-	// MAH: end
 	memcpy(key->dl_src, eth->h_source, ETH_ALEN);
 	memcpy(key->dl_dst, eth->h_dest, ETH_ALEN);
 	skb_set_network_header(skb, nh_ofs);
-
-
 
 	/* Network layer. */
 	if (key->dl_type == htons(ETH_P_IP) && iphdr_ok(skb)) {
@@ -560,25 +470,6 @@ int flow_extract(struct sk_buff *skb, uint16_t in_port,
 	return retval;
 }
 
-// MAH: start
-
-void set_ethertype(struct sk_buff *skb, uint16_t eth_type)
-{
-	struct ethhdr *eth;
-	struct eth_snap_hdr *esh;
-	eth = eth_hdr(skb);
-	esh = (struct eth_snap_hdr *) eth;
-
-	if (likely(ntohs(eth->h_proto) >= OFP_DL_TYPE_ETH2_CUTOFF)) {
-		eth->h_proto = eth_type;
-	} else if (skb->len >= sizeof *esh && is_snap(esh)) {
-		esh->ethertype = eth_type;
-	} else {
-		printk("can't set ethertype!");
-	}
-}
-// MAH: end
-
 /* Initializes the flow module.
  * Returns zero if successful or a negative error code. */
 int flow_init(void)
@@ -597,41 +488,3 @@ void flow_exit(void)
 	kmem_cache_destroy(flow_cache);
 }
 
-
-// MAH: start
-// determine where MPLS header starts
-// assumes mac_header is already set
-char * mpls_hdr(const struct sk_buff *skb)
-{
-	struct ethhdr *eth;
-	struct eth_snap_hdr *esh;
-	int nh_ofs;
-	uint16_t dl_type;
-
-	eth = eth_hdr(skb);
-	esh = (struct eth_snap_hdr *) eth;
-	nh_ofs = sizeof *eth;
-	if (likely(ntohs(eth->h_proto) >= OFP_DL_TYPE_ETH2_CUTOFF))
-		dl_type = eth->h_proto;
-	else if (skb->len >= sizeof *esh && is_snap(esh)) {
-		dl_type = esh->ethertype;
-		nh_ofs = sizeof *esh;
-	} else {
-		dl_type = htons(OFP_DL_TYPE_NOT_ETH_TYPE);
-		if (skb->len >= nh_ofs + sizeof(struct llc_pdu_un)) {
-			nh_ofs += sizeof(struct llc_pdu_un);
-		}
-	}
-
-	/* Check for a VLAN tag */
-	if (dl_type == htons(ETH_P_8021Q) &&
-	    skb->len >= nh_ofs + sizeof(struct vlan_hdr)) {
-		struct vlan_hdr *vh = (struct vlan_hdr*)(skb->data + nh_ofs);
-		dl_type = vh->h_vlan_encapsulated_proto;
-		nh_ofs += sizeof(struct vlan_hdr);
-	}
-
-	return skb->mac_header + nh_ofs;
-}
-
-// MAH: end

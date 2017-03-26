@@ -55,20 +55,8 @@ struct flow {
     uint8_t dl_dst[6];          /* Ethernet destination address. */
     uint8_t nw_proto;           /* IP protocol. */
     uint8_t reserved;           /* Pad to 32-bit alignment. */
-
-    // MAH: start
-    // Add support for two MPLS labels to the flow table.
-    // note: leave the above reserved field to preserve 32-bit alignment
-    uint32_t mpls_label1;		/* Top of label stack */
-    uint32_t mpls_label2;		/* Second label (if available)*/
-    // MAH: end
 };
-
-// MAH: start
-//BUILD_ASSERT_DECL(sizeof (struct flow) == 32);
-// flow now has 8 more bytes for the mpls labels
-BUILD_ASSERT_DECL(sizeof (struct flow) == 40);
-// MAH: end
+BUILD_ASSERT_DECL(sizeof (struct flow) == 32);
 
 int flow_extract(struct ofpbuf *, uint16_t in_port, struct flow *);
 void flow_print(FILE *, const struct flow *);

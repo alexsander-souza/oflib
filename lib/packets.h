@@ -98,11 +98,6 @@ static inline void eth_addr_random(uint8_t ea[ETH_ADDR_LEN])
 #define ETH_TYPE_IP            0x0800
 #define ETH_TYPE_ARP           0x0806
 #define ETH_TYPE_VLAN          0x8100
-// MAH: start
-#define ETH_TYPE_MPLS_UNICAST  	0x8847
-#define ETH_TYPE_MPLS_MULTICAST 0x8848
-// MAH: end
-
 
 #define ETH_HEADER_LEN 14
 #define ETH_PAYLOAD_MIN 46
@@ -207,32 +202,6 @@ struct ip_header {
 };
 BUILD_ASSERT_DECL(IP_HEADER_LEN == sizeof(struct ip_header));
 
-// MAH: start
-// MPLS header
-#define MPLS_INVALID_LABEL	0xFFFFFFFF
-
-#define MPLS_HEADER_LEN 4
-typedef union
-{
-        struct
-        {
-         #if BYTE_ORDER == BIG_ENDIAN
-         uint32_t	label:20;
-         uint8_t	exp:3;
-         uint8_t	s:1;
-         uint8_t	ttl:8;
-        #else
-         uint8_t	ttl:8;
-         uint8_t 	s:1;
-         uint8_t	exp:3;
-         uint32_t	label:20;
-        #endif
-        };
-        uint32_t value;
-} mpls_header;
-BUILD_ASSERT_DECL(MPLS_HEADER_LEN == sizeof(mpls_header));
-// MAH: end
-
 #define ICMP_HEADER_LEN 4
 struct icmp_header {
     uint8_t icmp_type;
@@ -257,8 +226,8 @@ BUILD_ASSERT_DECL(UDP_HEADER_LEN == sizeof(struct udp_header));
 #define TCP_ACK 0x10
 #define TCP_URG 0x20
 
-#define TCP_FLAGS(tcp_ctl) (htons(tcp_ctl) & 0x003f)
-#define TCP_OFFSET(tcp_ctl) (htons(tcp_ctl) >> 12)
+#define TCP_FLAGS(tcp_ctl) ((tcp_ctl) & 0x003f)
+#define TCP_OFFSET(tcp_ctl) ((tcp_ctl) >> 12)
 
 #define TCP_HEADER_LEN 20
 struct tcp_header {

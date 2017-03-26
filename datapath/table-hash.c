@@ -1,6 +1,6 @@
 /*
  * Distributed under the terms of the GNU GPL version 2.
- * Copyright (c) 2007, 2008 The Board of Trustees of The Leland
+ * Copyright (c) 2007, 2008 The Board of Trustees of The Leland 
  * Stanford Junior University
  */
 
@@ -31,7 +31,7 @@ static struct sw_flow **find_bucket(struct sw_table *swt,
 									const struct sw_flow_key *key)
 {
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
-	unsigned int crc = crc32_calculate(&th->crc32, key,
+	unsigned int crc = crc32_calculate(&th->crc32, key, 
 				offsetof(struct sw_flow_key, wildcards));
 	return &th->buckets[crc & th->bucket_mask];
 }
@@ -48,7 +48,6 @@ static int table_hash_insert(struct sw_table *swt, struct sw_flow *flow)
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
 	struct sw_flow **bucket;
 	int retval;
-
 
 	if (flow->key.wildcards != 0)
 		return 0;
@@ -71,9 +70,9 @@ static int table_hash_insert(struct sw_table *swt, struct sw_flow *flow)
 	return retval;
 }
 
-static int table_hash_modify(struct sw_table *swt,
+static int table_hash_modify(struct sw_table *swt, 
 		const struct sw_flow_key *key, uint16_t priority, int strict,
-		const struct ofp_action_header *actions, size_t actions_len)
+		const struct ofp_action_header *actions, size_t actions_len) 
 {
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
 	unsigned int count = 0;
@@ -114,7 +113,7 @@ static int do_delete(struct sw_flow **bucket, struct sw_flow *flow)
  * argument, since all exact-match entries are the same (highest)
  * priority. */
 static int table_hash_delete(struct sw_table *swt,
-					const struct sw_flow_key *key,  uint16_t out_port,
+					const struct sw_flow_key *key,  uint16_t out_port, 
 					uint16_t priority, int strict)
 {
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
@@ -154,7 +153,7 @@ static int table_hash_timeout(struct datapath *dp, struct sw_table *swt)
 		if (flow) {
 			int reason = flow_timeout(flow);
 			if (reason >= 0) {
-				count += do_delete(bucket, flow);
+				count += do_delete(bucket, flow); 
 				dp_send_flow_expired(dp, flow, reason);
 			}
 		}
@@ -180,7 +179,7 @@ static int table_hash_iterate(struct sw_table *swt,
 			      const struct sw_flow_key *key, uint16_t out_port,
 			      struct sw_table_position *position,
 			      int (*callback)(struct sw_flow *, void *private),
-			      void *private)
+			      void *private) 
 {
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
 
@@ -217,7 +216,7 @@ static int table_hash_iterate(struct sw_table *swt,
 	}
 }
 static void table_hash_stats(struct sw_table *swt,
-				 struct sw_table_stats *stats)
+				 struct sw_table_stats *stats) 
 {
 	struct sw_table_hash *th = (struct sw_table_hash *) swt;
 	stats->name = "hash";
@@ -274,7 +273,7 @@ static struct sw_flow *table_hash2_lookup(struct sw_table *swt,
 {
 	struct sw_table_hash2 *t2 = (struct sw_table_hash2 *) swt;
 	int i;
-
+	
 	for (i = 0; i < 2; i++) {
 		struct sw_flow *flow = *find_bucket(t2->subtable[i], key);
 		if (flow && flow_keys_equal(&flow->key, key))
@@ -292,25 +291,25 @@ static int table_hash2_insert(struct sw_table *swt, struct sw_flow *flow)
 	return table_hash_insert(t2->subtable[1], flow);
 }
 
-static int table_hash2_modify(struct sw_table *swt,
+static int table_hash2_modify(struct sw_table *swt, 
 		const struct sw_flow_key *key, uint16_t priority, int strict,
 		const struct ofp_action_header *actions, size_t actions_len)
 {
 	struct sw_table_hash2 *t2 = (struct sw_table_hash2 *) swt;
-	return (table_hash_modify(t2->subtable[0], key, priority, strict,
+	return (table_hash_modify(t2->subtable[0], key, priority, strict, 
 					actions, actions_len)
-			+ table_hash_modify(t2->subtable[1], key, priority, strict,
+			+ table_hash_modify(t2->subtable[1], key, priority, strict, 
 					actions, actions_len));
 }
 
 static int table_hash2_delete(struct sw_table *swt,
-							  const struct sw_flow_key *key,
+							  const struct sw_flow_key *key, 
 							  uint16_t out_port,
 							  uint16_t priority, int strict)
 {
 	struct sw_table_hash2 *t2 = (struct sw_table_hash2 *) swt;
 	return (table_hash_delete(t2->subtable[0], key, out_port, priority, strict)
-			+ table_hash_delete(t2->subtable[1], key, out_port,
+			+ table_hash_delete(t2->subtable[1], key, out_port, 
 				priority, strict));
 }
 
@@ -339,7 +338,7 @@ static int table_hash2_iterate(struct sw_table *swt,
 	int i;
 
 	for (i = position->private[1]; i < 2; i++) {
-		int error = table_hash_iterate(t2->subtable[i], key, out_port,
+		int error = table_hash_iterate(t2->subtable[i], key, out_port, 
 				position, callback, private);
 		if (error) {
 			return error;
@@ -420,7 +419,7 @@ kmem_alloc(size_t size)
 	if (!ptr) {
 		ptr = vmalloc(size);
 		if (ptr)
-			printk("openflow: used vmalloc for %lu bytes\n",
+			printk("openflow: used vmalloc for %lu bytes\n", 
 					(unsigned long)size);
 	}
 	return ptr;

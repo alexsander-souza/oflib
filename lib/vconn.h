@@ -84,19 +84,13 @@ void *make_openflow_xid(size_t openflow_len, uint8_t type,
 void update_openflow_length(struct ofpbuf *);
 struct ofpbuf *make_add_flow(const struct flow *, uint32_t buffer_id,
                              uint16_t max_idle, size_t actions_len);
-// MAH: start
-// port is now 32-bit
 struct ofpbuf *make_add_simple_flow(const struct flow *,
-									uint32_t buffer_id, uint32_t out_port,
-                                    //uint32_t buffer_id, uint16_t out_port,
+                                    uint32_t buffer_id, uint16_t out_port,
                                     uint16_t max_idle);
 struct ofpbuf *make_buffered_packet_out(uint32_t buffer_id,
-										uint16_t in_port, uint32_t out_port);
-                                        //uint16_t in_port, uint16_t out_port);
+                                        uint16_t in_port, uint16_t out_port);
 struct ofpbuf *make_unbuffered_packet_out(const struct ofpbuf *packet,
-										  uint16_t in_port, uint32_t out_port);
-                                          //uint16_t in_port, uint16_t out_port);
-// MAH: end
+                                          uint16_t in_port, uint16_t out_port);
 struct ofpbuf *make_echo_request(void);
 struct ofpbuf *make_echo_reply(const struct ofp_header *rq);
 

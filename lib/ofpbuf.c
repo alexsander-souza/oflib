@@ -51,10 +51,7 @@ ofpbuf_use(struct ofpbuf *b, void *base, size_t allocated)
     b->base = b->data = base;
     b->allocated = allocated;
     b->size = 0;
-    // MAH: start
-    //b->l2 = b->l3 = b->l4 = b->l7 = NULL;
-    b->l2 = b->l2_5 = b->l3 = b->l4 = b->l7 = NULL;
-    // MAH: end
+    b->l2 = b->l3 = b->l4 = b->l7 = NULL;
     b->next = NULL;
     b->private = NULL;
 }
@@ -152,11 +149,6 @@ ofpbuf_prealloc_tailroom(struct ofpbuf *b, size_t size)
         if (b->l2) {
             b->l2 = (char*)b->l2 + base_delta;
         }
-        // MAH: start
-        if (b->l2_5) {
-			b->l2_5 = (char*)b->l2_5 + base_delta;
-		}
-        // MAH: end
         if (b->l3) {
             b->l3 = (char*)b->l3 + base_delta;
         }
@@ -297,123 +289,3 @@ ofpbuf_try_pull(struct ofpbuf *b, size_t size)
 {
     return b->size >= size ? ofpbuf_pull(b, size) : NULL;
 }
-
-
-// MAH: start
-// Pop (i.e. remove) size bytes from the buffer starting at
-// offset bytes from the base
-void
-ofpbuf_pop(struct ofpbuf *b, size_t offset, size_t num_bytes)
-{
-	// allocate some scratch memory to store all the bytes
-	// that come after data + offset + size
-	size_t scratch_size;
-	uint8_t *pop_pos;
-	void *scratch;
-
-	pop_pos = (uint8_t *)b->data + offset;
-	scratch_size = b->size - (offset + num_bytes);
-	scratch = xmalloc(scratch_size);
-
-	memcpy(scratch, pop_pos + num_bytes, scratch_size);
-
-	// now copy back the bytes in scratch to
-	// the buffer at the position base + offset
-	memcpy(pop_pos, scratch, scratch_size);
-
-	// free scratch memory
-	free(scratch);
-
-	// adjust layer pointers
-	if (b->l2 && (b->l2 > (void*)pop_pos)) {
-		b->l2 = (char*)b->l2 - num_bytes;
-	}
-	if (b->l2_5 && (b->l2_5 > (void*)pop_pos)) {
-		b->l2_5 = (char*)b->l2_5 - num_bytes;
-	}
-	if (b->l3 && (b->l3 > (void*)pop_pos)) {
-		b->l3 = (char*)b->l3 - num_bytes;
-	}
-	if (b->l4 && (b->l4 > (void*)pop_pos)) {
-		b->l4 = (char*)b->l4 - num_bytes;
-	}
-	if (b->l7 && (b->l7 > (void*)pop_pos)) {
-		b->l7 = (char*)b->l7 - num_bytes;
-	}
-
-	// if l2_5 == l3, remove l2_5
-	// XXX is this right and should we do it for the other layers?
-	if (b->l2_5 == b->l3) {
-		b->l2_5 = NULL;
-	}
-
-
-	// update the size variable to indicate we are using
-	// num_bytes less bytes
-	b->size -= num_bytes;
-}
-// MAH: end
-
-// MAH: start
-// Push (i.e. insert) size bytes from data into the buffer starting at offset
-// bytes from the base
-// returns non-zero value if not successful
-// memory allocated (e.g. b->size + num_bytes <= b->allocated)
-size_t
-ofpbuf_push_at(struct ofpbuf *b, size_t offset, void *data, size_t num_bytes)
-{
-	// check that there is enough room
-	size_t headroom, tailroom;
-	size_t scratch_size;
-	uint8_t *push_pos;
-	void *scratch;
-
-	push_pos = (uint8_t *)b->data + offset;
-	headroom = (size_t)b->data - (size_t)b->base;
-	tailroom = (size_t)b->allocated - b->size - headroom;
-	// XXX printf("ofpbuf_push_at: headroom = %u, tailroom = %u, requested size = %u\n", headroom, tailroom, num_bytes);
-	if (tailroom < num_bytes) return (size_t)-1; // return non-zero to indicate error
-
-	// allocate some scratch memory to store all the bytes
-	// that come after data + offset + size
-	scratch_size = b->size - offset;
-	scratch = xmalloc(scratch_size);
-
-	// XXX printf("copy from %x %u bytes\n and store in scratch\n", ((size_t)b->data + offset), scratch_size);
-	memcpy(scratch, push_pos, scratch_size);
-
-	// now copy num_bytes from data into the buffer at position data + offset
-	// XXX printf("copy data to %x %u bytes\n", (size_t)b->data + offset, num_bytes);
-	memcpy(push_pos, data, num_bytes);
-
-	// now copy back the bytes in scratch to
-	// the buffer at the position base + offset
-	// XXX printf("copy to %x %u bytes\n", (size_t)b->data + offset + num_bytes, scratch_size);
-	memcpy(push_pos + num_bytes, scratch, scratch_size);
-
-	// free scratch mem
-	free(scratch);
-
-	// adjust layer pointers
-	if (b->l2 && (b->l2 <= (void*)push_pos)) {
-		b->l2 = (char*)b->l2 + num_bytes;
-	}
-	if (b->l2_5 && (b->l2_5 <= (void*)push_pos)) {
-		b->l2_5 = (char*)b->l2_5 + num_bytes;
-	}
-	if (b->l3 && (b->l3 <= (void*)push_pos)) {
-		b->l3 = (char*)b->l3 + num_bytes;
-	}
-	if (b->l4 && (b->l4 <= (void*)push_pos)) {
-		b->l4 = (char*)b->l4 + num_bytes;
-	}
-	if (b->l7 && (b->l7 <= (void*)push_pos)) {
-		b->l7 = (char*)b->l7 + num_bytes;
-	}
-
-	// update the size variable to indicate we are using
-	// num_bytes more bytes
-	b->size += num_bytes;
-	return 0;
-}
-// MAH: end

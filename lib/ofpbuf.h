@@ -35,9 +35,6 @@
 #define OFPBUF_H 1
 
 #include <stddef.h>
-// MAH: start
-#include <stdint.h>
-// MAH: end
 
 /* Buffer for holding arbitrary data.  An ofpbuf is automatically reallocated
  * as necessary if it grows too large for the available memory. */
@@ -49,23 +46,12 @@ struct ofpbuf {
     size_t size;                /* Number of bytes in use. */
 
     void *l2;                   /* Link-level header. */
-    // MAH: start
-    // pointer for MPLS
-    void *l2_5;					/* Layer 2.5 (MPLS).*/
-    // MAH: end
     void *l3;                   /* Network-level header. */
     void *l4;                   /* Transport-level header. */
     void *l7;                   /* Application data. */
 
     struct ofpbuf *next;        /* Next in a list of ofpbufs. */
     void *private;              /* Private pointer for use by owner. */
-
-    // MAH: start
-    // unfortunately we need this here
-    // if we implement swap using pop & push then we need
-    // to remember the ttl, exp bits from the last label
-    uint32_t last_mpls_h;
-    // MAH: end
 };
 
 void ofpbuf_use(struct ofpbuf *, void *, size_t);
@@ -98,10 +84,5 @@ void ofpbuf_prealloc_tailroom(struct ofpbuf *, size_t);
 void ofpbuf_clear(struct ofpbuf *);
 void *ofpbuf_pull(struct ofpbuf *, size_t);
 void *ofpbuf_try_pull(struct ofpbuf *, size_t);
-
-// MAH: start
-void ofpbuf_pop(struct ofpbuf *b, size_t offset, size_t num_bytes);
-size_t ofpbuf_push_at(struct ofpbuf *b, size_t offset, void *data, size_t num_bytes);
-// MAH: end
 
 #endif /* ofpbuf.h */

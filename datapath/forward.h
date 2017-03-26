@@ -14,7 +14,7 @@ struct sender;
  * is an index into an array of buffers.  The cookie distinguishes between
  * different packets that have occupied a single buffer.  Thus, the more
  * buffers we have, the lower-quality the cookie... */
-#define PKT_BUFFER_BITS 8
+#define PKT_BUFFER_BITS 12
 #define N_PKT_BUFFERS (1 << PKT_BUFFER_BITS)
 #define PKT_BUFFER_MASK (N_PKT_BUFFERS - 1)
 
@@ -25,10 +25,6 @@ void fwd_port_input(struct sw_chain *, struct sk_buff *,
 		    struct net_bridge_port *);
 int run_flow_through_tables(struct sw_chain *, struct sk_buff *,
 			    struct net_bridge_port *);
-// MAH: start
-int run_through_vport_table(struct sw_chain *, struct sk_buff *,
-							struct net_bridge_port *, uint32_t vport);
-// MAH: end
 int fwd_control_input(struct sw_chain *, const struct sender *,
 		      const void *, size_t);
 

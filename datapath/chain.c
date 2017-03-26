@@ -1,6 +1,6 @@
 /*
  * Distributed under the terms of the GNU GPL version 2.
- * Copyright (c) 2007, 2008 The Board of Trustees of The Leland
+ * Copyright (c) 2007, 2008 The Board of Trustees of The Leland 
  * Stanford Junior University
  */
 
@@ -67,6 +67,7 @@ struct sw_flow *chain_lookup(struct sw_chain *chain,
 			 const struct sw_flow_key *key)
 {
 	int i;
+
 	BUG_ON(key->wildcards);
 	for (i = 0; i < chain->n_tables; i++) {
 		struct sw_table *t = chain->tables[i];
@@ -90,6 +91,7 @@ struct sw_flow *chain_lookup(struct sw_chain *chain,
 int chain_insert(struct sw_chain *chain, struct sw_flow *flow)
 {
 	int i;
+
 	might_sleep();
 	for (i = 0; i < chain->n_tables; i++) {
 		struct sw_table *t = chain->tables[i];
@@ -100,14 +102,14 @@ int chain_insert(struct sw_chain *chain, struct sw_flow *flow)
 	return -ENOBUFS;
 }
 
-/* Modifies actions in 'chain' that match 'key'.  If 'strict' set, wildcards
+/* Modifies actions in 'chain' that match 'key'.  If 'strict' set, wildcards 
  * and priority must match.  Returns the number of flows that were modified.
  *
  * Expensive in the general case as currently implemented, since it requires
  * iterating through the entire contents of each table for keys that contain
  * wildcards.  Relatively cheap for fully specified keys. */
 int
-chain_modify(struct sw_chain *chain, const struct sw_flow_key *key,
+chain_modify(struct sw_chain *chain, const struct sw_flow_key *key, 
 		uint16_t priority, int strict,
 		const struct ofp_action_header *actions, size_t actions_len)
 {
@@ -122,9 +124,9 @@ chain_modify(struct sw_chain *chain, const struct sw_flow_key *key,
 	return count;
 }
 
-/* Deletes from 'chain' any and all flows that match 'key'.  If 'out_port'
- * is not OFPP_NONE, then matching entries must have that port as an
- * argument for an output action.  If 'strict" is set, then wildcards and
+/* Deletes from 'chain' any and all flows that match 'key'.  If 'out_port' 
+ * is not OFPP_NONE, then matching entries must have that port as an 
+ * argument for an output action.  If 'strict" is set, then wildcards and 
  * priority must match.  Returns the number of flows that were deleted.
  *
  * Expensive in the general case as currently implemented, since it requires
@@ -132,7 +134,7 @@ chain_modify(struct sw_chain *chain, const struct sw_flow_key *key,
  * wildcards.  Relatively cheap for fully specified keys.
  *
  * Caller must hold dp_mutex. */
-int chain_delete(struct sw_chain *chain, const struct sw_flow_key *key,
+int chain_delete(struct sw_chain *chain, const struct sw_flow_key *key, 
 		uint16_t out_port, uint16_t priority, int strict)
 {
 	int count = 0;

@@ -7,12 +7,11 @@ from heapq import merge
 
 def headers():
     private_headers = ['lib/csum.h','lib/poll-loop.h', 'lib/rconn.h', 'lib/queue.h',
-                       'lib/stp.h', 'lib/compiler.h', 'lib/util.h', 'lib/vconn.h',
+                       'lib/stp.h', 'lib/compiler.h', 'lib/vconn.h', 'lib/util.h',
                        'lib/xtoxll.h', 'switch/chain.h', 'switch/table.h', 'switch/datapath.h',
-                       'lib/ofpbuf.h', 'switch/switch-port.h', 'lib/red-black-tree.h',
-                       'lib/misc.h', 'lib/stack.h', 'switch/dp_act.h', 'switch/switch-flow.h', 
-                       'lib/flow.h', 'lib/list.h', 'switch/pt_act.h',
-                       'lib/packets.h', 'lib/random.h', 'lib/timeval.h', 'lib/type-props.h']
+                       'lib/ofpbuf.h', 'switch/dp_act.h', 'switch/switch-flow.h',
+                       'lib/flow.h', 'lib/list.h', 'lib/packets.h', 'lib/random.h',
+                       'lib/timeval.h', 'lib/type-props.h']
     return private_headers
 
 
@@ -38,7 +37,7 @@ def configure(conf):
 def build(bld):
     # Build the OpenFlow C static library from the software implementation distribution
     of = bld.new_task_gen('cc', 'cstaticlib')
-    of.source = list(merge(bld.glob('/switch/*.c'), bld.glob('/lib/*.c')))
+    of.source = bld.path.ant_glob(['switch/*.c', 'lib/*.c'], excl=['lib/vconn-ssl.c'])
     of.includes = [
 	'.',
 	'..',
@@ -46,7 +45,6 @@ def build(bld):
 	'include/openflow/.',
 	'lib/.',
 	'switch/.',
-	'/usr/include/libxml2',
     ]
     of.env.append_value('CCFLAGS', '-fPIC')
     of.target = 'openflow'

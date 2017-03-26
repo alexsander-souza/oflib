@@ -31,11 +31,6 @@
  * derivatives without specific, written prior permission.
  */
 
-// MAH: start
-// if defined, controller will manage MPLS switches
-#define MPLS_CONTROLLER
-// MAH: end
-
 #include <config.h>
 
 #include <errno.h>
@@ -49,12 +44,7 @@
 #include "compiler.h"
 #include "daemon.h"
 #include "fault.h"
-// MAH: start
-// use mpls_switch instead of learning switch
-#ifndef MPLS_CONTROLLER
-	#include "learning-switch.h"
-#endif
-// MAH: end
+#include "learning-switch.h"
 #include "ofpbuf.h"
 #include "openflow/openflow.h"
 #include "poll-loop.h"
@@ -64,14 +54,6 @@
 #include "vconn-ssl.h"
 #include "vconn.h"
 #include "vlog-socket.h"
-// MAH: start
-#ifdef MPLS_CONTROLLER
-	#include "packets.h"
-	#include "flow.h"
-	#include "mpls-fib.h"
-	#include "mpls-switch.h"
-#endif
-// MAH: end
 
 #include "vlog.h"
 #define THIS_MODULE VLM_controller
@@ -79,20 +61,10 @@
 #define MAX_SWITCHES 16
 #define MAX_LISTENERS 16
 
-// MAH: start
-// use mpls-switch instead of learning switch
-#ifdef MPLS_CONTROLLER
-	struct switch_ {
-		struct mpls_switch *mswitch;
-		struct rconn *rconn;
-	};
-#else
-	struct switch_ {
-		struct lswitch *lswitch;
-		struct rconn *rconn;
-	};
-#endif
-// MAH: end
+struct switch_ {
+    struct lswitch *lswitch;
+    struct rconn *rconn;
+};
 
 /* Learn the ports on which MAC addresses appear? */
 static bool learn_macs = true;
@@ -203,14 +175,7 @@ main(int argc, char *argv[])
                     i++;
                 } else {
                     rconn_destroy(this->rconn);
-                    // MAH: start
-                    // use mpls_switch instead of lswitch
-#ifdef MPLS_CONTROLLER
-                    mpls_switch_destroy(this->mswitch);
-#else
                     lswitch_destroy(this->lswitch);
-#endif
-                    // MAH: end
                     switches[i] = switches[--n_switches];
                 }
             }
@@ -220,14 +185,7 @@ main(int argc, char *argv[])
         }
         for (i = 0; i < n_switches; i++) {
             struct switch_ *this = &switches[i];
-            // MAH: start
-            // use mpls_switch instead of lswitch
-#ifdef MPLS_CONTROLLER
-            mpls_switch_run(this->mswitch, this->rconn);
-#else
             lswitch_run(this->lswitch, this->rconn);
-#endif
-            // MAH: end
         }
 
         /* Wait for something to happen. */
@@ -240,14 +198,7 @@ main(int argc, char *argv[])
             struct switch_ *sw = &switches[i];
             rconn_run_wait(sw->rconn);
             rconn_recv_wait(sw->rconn);
-            // MAH: start
-            // use mpls_switch instead of lswitch
-#ifdef MPLS_CONTROLLER
-            mpls_switch_wait(sw->mswitch);
-#else
             lswitch_wait(sw->lswitch);
-#endif
-            // MAH: end
         }
         poll_block();
     }
@@ -259,15 +210,8 @@ static void
 new_switch(struct switch_ *sw, struct vconn *vconn, const char *name)
 {
     sw->rconn = rconn_new_from_vconn(name, vconn);
-    // MAH: start
-    // use mpls_switch instead of lswitch
-#ifdef MPLS_CONTROLLER
-    sw->mswitch = mpls_switch_create(sw->rconn);
-#else
     sw->lswitch = lswitch_create(sw->rconn, learn_macs,
                                  setup_flows ? max_idle : -1);
-#endif
-    // MAH: end
 }
 
 static int
@@ -280,14 +224,7 @@ do_switching(struct switch_ *sw)
 
     msg = rconn_recv(sw->rconn);
     if (msg) {
-        // MAH: start
-        // use mpls_switch instead of lswitch
-#ifdef MPLS_CONTROLLER
-    	mpls_switch_process_packet(sw->mswitch, sw->rconn, msg);
-#else
         lswitch_process_packet(sw->lswitch, sw->rconn, msg);
-#endif
-        // MAH: end
         ofpbuf_delete(msg);
     }
     rconn_run(sw->rconn);

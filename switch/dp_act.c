@@ -39,57 +39,7 @@
 #include "dp_act.h"
 #include "openflow/nicira-ext.h"
 #include "nx_act.h"
-// MAH: start
-#include "openflow/ericsson-ext.h"
-#include "er_act.h"
-// MAH: end
 
-
-
-// MAH: end
-// rewrite the 20-bit label for the label on the top of the label stack.
-void set_mpls_label_act(struct ofpbuf *buffer,
-						const struct sw_flow_key *key,
-						const uint32_t label_out)
-{
-	struct eth_header *eth_h;
-	mpls_header mpls_h;
-	uint32_t value_to_swap;
-	uint16_t eth_proto;
-
-	eth_proto = ntohs(key->flow.dl_type);
-	eth_h = (struct eth_header *) buffer->l2;
-
-	if (eth_proto == ETH_TYPE_MPLS_UNICAST) {
-		mpls_h.value = htonl(*((uint32_t*)buffer->l2_5));
-		mpls_h.label = ntohl(label_out);
-		value_to_swap = htonl(mpls_h.value);
-		*((uint32_t*)buffer->l2_5) = value_to_swap;
-	}
-}
-
-
-// rewrite the 3 exp bits for the label on the top of the label stack.
-void set_mpls_exp_act(struct ofpbuf *buffer,
-					  const struct sw_flow_key *key,
-					  const uint8_t exp)
-{
-	struct eth_header *eth_h;
-	mpls_header mpls_h;
-	uint32_t value_to_swap;
-	uint16_t eth_proto;
-
-	eth_proto = ntohs(key->flow.dl_type);
-	eth_h = (struct eth_header *) buffer->l2;
-
-	if (eth_proto == ETH_TYPE_MPLS_UNICAST) {
-		mpls_h.value = htonl(*((uint32_t*)buffer->l2_5));
-		mpls_h.exp = exp;
-		value_to_swap = htonl(mpls_h.value);
-		*((uint32_t*)buffer->l2_5) = value_to_swap;
-	}
-}
-// MAH: end
 
 static uint16_t
 validate_output(struct datapath *dp, const struct sw_flow_key *key,
@@ -100,19 +50,12 @@ validate_output(struct datapath *dp, const struct sw_flow_key *key,
     /* To prevent loops, make sure there's no action to send to the
      * OFP_TABLE virtual port.
      */
-    // MAH: start
-    // port is no 32-bit
-    if (oa->port == htonl(OFPP_NONE) || oa->port == (uint32_t)key->flow.in_port) {
-    //if (oa->port == htons(OFPP_NONE) || oa->port == key->flow.in_port) {
-    // MAH: end
+    if (oa->port == htons(OFPP_NONE) || oa->port == key->flow.in_port) {
         return OFPBAC_BAD_OUT_PORT;
     }
     return ACT_VALIDATION_OK;
 }
 
-// MAH: start not static
-//static
-// MAH: end
 void
 do_output(struct datapath *dp, struct ofpbuf *buffer, int in_port,
           size_t max_len, int out_port, bool ignore_no_fwd)
@@ -218,24 +161,6 @@ set_dl_addr(struct ofpbuf *buffer, struct sw_flow_key *key,
         memcpy(eh->eth_dst, da->dl_addr, sizeof eh->eth_dst);
     }
 }
-
-// MAH: start
-void
-set_mpls_label(struct ofpbuf *buffer, struct sw_flow_key *key,
-        const struct ofp_action_header *ah)
-{
-    struct ofp_action_mpls_label *ml = (struct ofp_action_mpls_label *)ah;
-    set_mpls_label_act(buffer, key, ml->label_out);
-}
-
-void
-set_mpls_exp(struct ofpbuf *buffer, struct sw_flow_key *key,
-        const struct ofp_action_header *ah)
-{
-    struct ofp_action_mpls_exp *me = (struct ofp_action_mpls_exp *)ah;
-    set_mpls_exp_act(buffer, key, me->exp);
-}
-// MAH: end
 
 void
 set_nw_addr(struct ofpbuf *buffer, struct sw_flow_key *key,
@@ -365,21 +290,7 @@ static const struct openflow_action of_actions[] = {
         sizeof(struct ofp_action_tp_port),
         NULL,
         set_tp_port
-    },
-    // MAH: start
-    [OFPAT_SET_MPLS_LABEL] = {
-        sizeof(struct ofp_action_mpls_label),
-        sizeof(struct ofp_action_mpls_label),
-        NULL,
-        set_mpls_label
-    },
-    [OFPAT_SET_MPLS_EXP] = {
-		sizeof(struct ofp_action_mpls_exp),
-		sizeof(struct ofp_action_mpls_exp),
-		NULL,
-		set_mpls_exp
-	}
-    // MAH: end
+    }
     /* OFPAT_VENDOR is not here, since it would blow up the array size. */
 };
 
@@ -391,6 +302,7 @@ validate_ofpat(struct datapath *dp, const struct sw_flow_key *key,
 {
     int ret = ACT_VALIDATION_OK;
     const struct openflow_action *act = &of_actions[type];
+
     if ((len < act->min_size) || (len > act->max_size)) {
         return OFPBAC_BAD_LEN;
     }
@@ -421,11 +333,6 @@ validate_vendor(struct datapath *dp, const struct sw_flow_key *key,
     case NX_VENDOR_ID:
         ret = nx_validate_act(dp, key, avh, len);
         break;
-    // MAH: start
-    case ER_VENDOR_ID:
-    	ret = er_validate_act(dp, key, avh, len);
-    	break;
-    // MAH: end
 
     default:
         return OFPBAC_BAD_VENDOR;
@@ -495,14 +402,9 @@ execute_ofpat(struct ofpbuf *buffer, struct sw_flow_key *key,
 }
 
 /* Execute a vendor-defined action against 'buffer'. */
-// MAH: start
-// include a reference to the datapath object for vendor actions
-static void execute_vendor(struct datapath *dp, struct ofpbuf *buffer,
-		const struct sw_flow_key *key, const struct ofp_action_header *ah)
-//static void
-//execute_vendor(struct ofpbuf *buffer, const struct sw_flow_key *key,
-//        const struct ofp_action_header *ah)
-// MAH: end
+static void
+execute_vendor(struct ofpbuf *buffer, const struct sw_flow_key *key, 
+        const struct ofp_action_header *ah)
 {
     struct ofp_action_vendor_header *avh
             = (struct ofp_action_vendor_header *)ah;
@@ -511,13 +413,6 @@ static void execute_vendor(struct datapath *dp, struct ofpbuf *buffer,
     case NX_VENDOR_ID:
         nx_execute_act(buffer, key, avh);
         break;
-
-    // MAH: start
-    // add case for Ericsson Vendor ID
-    case ER_VENDOR_ID:
-    	er_execute_act(dp, buffer, key, avh);
-    	break;
-    // MAH: end
 
     default:
         /* This should not be possible due to prior validation. */
@@ -558,18 +453,15 @@ void execute_actions(struct datapath *dp, struct ofpbuf *buffer,
 
         if (ah->type == htons(OFPAT_OUTPUT)) {
             struct ofp_action_output *oa = (struct ofp_action_output *)p;
-            // MAH: start
-            // port is now 32-bits
-            prev_port = ntohl(oa->port);
-            //prev_port = ntohs(oa->port);
-            // MAH: end
+            prev_port = ntohs(oa->port);
             max_len = ntohs(oa->max_len);
         } else {
             uint16_t type = ntohs(ah->type);
+
             if (type < ARRAY_SIZE(of_actions)) {
                 execute_ofpat(buffer, key, ah, type);
             } else if (type == OFPAT_VENDOR) {
-                execute_vendor(dp, buffer, key, ah);
+                execute_vendor(buffer, key, ah);
             }
         }
 

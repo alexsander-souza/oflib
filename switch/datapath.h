@@ -39,15 +39,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "ofpbuf.h"
-// MAH: start
-#include "switch-port.h"
-// MAH: end
 
 struct datapath;
 struct rconn;
 struct pvconn;
 
-// MAH: start
 // moved all of the following from datapath.c
 #include "flow.h"
 #include "list.h"
@@ -56,19 +52,10 @@ struct pvconn;
 #include "timeval.h"
 
 /* Capabilities supported by this implementation. */
-// MAH: start
-// switch supports a virtual port table
-/*#define OFP_SUPPORTED_CAPABILITIES ( OFPC_FLOW_STATS \
-        | OFPC_TABLE_STATS \
-        | OFPC_PORT_STATS \
-        | OFPC_MULTI_PHY_TX )
-*/
 #define OFP_SUPPORTED_CAPABILITIES ( OFPC_FLOW_STATS \
         | OFPC_TABLE_STATS \
         | OFPC_PORT_STATS \
-        | OFPC_MULTI_PHY_TX \
-        | OFPC_VPORT_TABLE)
-// MAH: end
+        | OFPC_MULTI_PHY_TX )
 
 /* Actions supported by this implementation. */
 #define OFP_SUPPORTED_ACTIONS ( (1 << OFPAT_OUTPUT)         \
@@ -80,19 +67,7 @@ struct pvconn;
                                 | (1 << OFPAT_SET_NW_SRC)   \
                                 | (1 << OFPAT_SET_NW_DST)   \
                                 | (1 << OFPAT_SET_TP_SRC)   \
-                                | (1 << OFPAT_SET_TP_DST) 	\
-								| (1 << OFPAT_SET_MPLS_LABEL) \
-								| (1 << OFPAT_SET_MPLS_EXP) )
-// MAH: start
-// added OFPAT_SET_MPLS_LABEL & OFPAT_SET_MPLS_EXP above
-// MAH: end
-// MAH: start
-#define OFP_SUPPORTED_VPORT_TABLE_ACTIONS ( (1 << OFPPAT_OUTPUT) \
-								| (1 << OFPPAT_POP_MPLS) \
-								| (1 << OFPPAT_PUSH_MPLS) \
-								| (1 << OFPPAT_SET_MPLS_LABEL) \
-								| (1 << OFPPAT_SET_MPLS_EXP) ) \
-// MAH: end
+                                | (1 << OFPAT_SET_TP_DST) )
 
 struct sw_port {
     uint32_t config;            /* Some subset of OFPPC_* flags. */
@@ -103,9 +78,6 @@ struct sw_port {
     unsigned long long int rx_packets, tx_packets;
     unsigned long long int rx_bytes, tx_bytes;
     unsigned long long int tx_dropped;
-    // MAH: start
-    unsigned long long int mpls_ttl0_dropped;
-    // MAH: end
 };
 
 /* The origin of a received OpenFlow message, to enable sending a reply. */
@@ -155,14 +127,7 @@ struct datapath {
     struct sw_port ports[DP_MAX_PORTS];
     struct list port_list; /* List of ports, for flooding. */
 
-    // MAH: start
-    /* Virtual ports. */
-    struct vport_table_t vport_table;
-    // MAH: end
-
 };
-// MAH: end
-
 
 int dp_new(struct datapath **, uint64_t dpid, struct rconn *);
 int dp_add_port(struct datapath *, const char *netdev);

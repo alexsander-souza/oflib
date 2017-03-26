@@ -69,7 +69,6 @@ static int table_linear_insert(struct sw_table *swt, struct sw_flow *flow)
 	flow->serial = tl->next_serial++;
 	list_add_tail_rcu(&flow->node, &f->node);
 	list_add_rcu(&flow->iter_node, &tl->iter_flows);
-	// MAH: start
 	return 1;
 }
 

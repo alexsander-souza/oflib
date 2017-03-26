@@ -93,13 +93,6 @@ enum ofp_port {
     OFPP_CONTROLLER = 0xfffd,  /* Send to controller. */
     OFPP_LOCAL      = 0xfffe,  /* Local openflow "port". */
     OFPP_NONE       = 0xffff,   /* Not associated with a physical port. */
-    // MAH: start
-    OFPP_VP_START	= 0x10000,	  /* start of virtual ports. */
-    OFPP_VP_END		= 0x40000000 /* end of virtual ports.   */
-    //OFPP_VPL_START	= 0x40000001, /* start of virtual port lists. */
-    //OFPP_VPL_START	= 0xffffffff  /* end of virtual port lists. */
-
-    // MAH: end
 };
 
 enum ofp_type {
@@ -113,14 +106,9 @@ enum ofp_type {
     /* Switch configuration messages. */
     OFPT_FEATURES_REQUEST,    /* Controller/switch message */
     OFPT_FEATURES_REPLY,      /* Controller/switch message */
-    // MAH: start
-    OFPT_VPORT_TABLE_FEATURES_REQUEST, /* Controller/switch message */
-    OFPT_VPORT_TABLE_FEATURES_REPLY,   /* Controller/switch message */
-    // MAH: end
     OFPT_GET_CONFIG_REQUEST,  /* Controller/switch message */
     OFPT_GET_CONFIG_REPLY,    /* Controller/switch message */
     OFPT_SET_CONFIG,          /* Controller/switch message */
-
 
     /* Asynchronous messages. */
     OFPT_PACKET_IN,           /* Async message */
@@ -131,14 +119,14 @@ enum ofp_type {
     OFPT_PACKET_OUT,          /* Controller/switch message */
     OFPT_FLOW_MOD,            /* Controller/switch message */
     OFPT_PORT_MOD,            /* Controller/switch message */
-    // MAH: start
-    // modify virtual port
-    OFPT_VPORT_MOD,			  /* Controller/switch message */
-	// MAH: end
 
     /* Statistics messages. */
     OFPT_STATS_REQUEST,       /* Controller/switch message */
-    OFPT_STATS_REPLY          /* Controller/switch message */
+    OFPT_STATS_REPLY,          /* Controller/switch message */
+
+    /* Barrier messages. */
+    OFPT_BARRIER_REQUEST, /* Controller/switch message */
+    OFPT_BARRIER_REPLY, /* Controller/switch message */
 };
 
 /* Header on all OpenFlow packets. */
@@ -189,11 +177,6 @@ enum ofp_capabilities {
     OFPC_MULTI_PHY_TX   = 1 << 4,  /* Supports transmitting through multiple
                                       physical interfaces */
     OFPC_IP_REASM       = 1 << 5,   /* Can reassemble IP fragments. */
-    // MAH: start
-    OFPC_VPORT_TABLE	= 1 << 6	/* Supports a virtual port table
-									   rest of virtual port table attributes
-									   specified in ofp_vport_table_features */
-    // MAH: end
 };
 
 /* Flags to indicate behavior of the physical port.  These flags are
@@ -285,29 +268,6 @@ struct ofp_switch_features {
 };
 OFP_ASSERT(sizeof(struct ofp_switch_features) == 32);
 
-// MAH: start
-/* virtual port table features.
- * If the switch supports virtual port table,
- * then use this message to query for the
- * port table attributes and the actions
- * supported at the port table. */
-struct ofp_vport_table_features {
-    struct ofp_header header;
-    // Note: max_vports also found in ofp_vport_table_stats
-    uint32_t max_vports;    /* Max number of entries supported */
-    uint32_t actions;		/* Bitmap of supported port table actions */
-	uint16_t max_chain_depth;	/* maximum depth of virtual port chain */
-    // XXX mixed_chaining is a non-permanent field
-    // It is used to indicate a virtual port cannot have a parent virtual
-    // port that performs a different action
-    // This is the case with the NetFPGA MPLS-switch as it cannot chain
-    // pop and push virtual ports
-    uint8_t mixed_chaining; /* 0 = false, 1 = true */
-    uint8_t pad[5];			/* align to 64-bits */
-};
-OFP_ASSERT(sizeof(struct ofp_vport_table_features) == 24);
-// MAH: end
-
 /* What changed about the physical port */
 enum ofp_port_reason {
     OFPPR_ADD,              /* The port was added */
@@ -319,8 +279,7 @@ enum ofp_port_reason {
 struct ofp_port_status {
     struct ofp_header header;
     uint8_t reason;          /* One of OFPPR_* */
-    uint8_t pad[7];          /*
- to 64-bits */
+    uint8_t pad[7];          /* Align to 64-bits */
     struct ofp_phy_port desc;
 };
 OFP_ASSERT(sizeof(struct ofp_port_status) == 64);
@@ -343,90 +302,6 @@ struct ofp_port_mod {
     uint8_t pad[4];         /* Pad to 64-bits. */
 };
 OFP_ASSERT(sizeof(struct ofp_port_mod) == 32);
-
-// MAH: start
-/* flag values for mpls_pop action. */
-enum {
-	MPLS_POP_DONT_POP		= 1 << 0, 	/* Don't pop. */
-	MPLS_POP_DECREMENT_TTL	= 1 << 1,	/* Decrement the ttl. */
-	MPLS_POP_COPY_TTL		= 1 << 2,	/* Copy the ttl bits to the next header. */
-	MPLS_POP_COPY_EXP		= 1 << 3	/* Copy the exp bits to the next header. */
-};
-
-/* flag values for mpls_push action. */
-enum {
-	MPLS_PUSH_DECREMENT_TTL	= 1 << 0,	/* Decrement the ttl. */
-	MPLS_PUSH_TTL_NEXT		= 1 << 1,	/* Copy the ttl bits from the next header. */
-	MPLS_PUSH_EXP_NEXT		= 1 << 2,	/* Copy the exp bits from the next header. */
-	MPLS_PUSH_TTL_PREV		= 1 << 3,	/* Copy the ttl bits from the previous label. */
-	MPLS_PUSH_EXP_PREV		= 1 << 4	/* Copy the exp bits from the previous label. */
-};
-
-
-struct action_pop_mpls {
-	uint16_t eth_type;	/* eth_type of packet 	*/
-    uint8_t flags;  	/* MPLS_POP_* flags		*/
-    uint8_t pad[5]; 	/* align to 64-bits		*/
-};
-OFP_ASSERT(sizeof(struct action_pop_mpls) == 8);
-
-struct action_push_mpls {
-    uint32_t label_out; /* outgoing mpls label.	*/
-    uint8_t	exp;		/* exp/cos bits. 		*/
-    uint8_t	ttl;		/* time to live. 		*/
-    uint8_t flags;		/* MPLS_PUSH_* flags	*/
-    uint8_t pad[1];		/* align to 64-bits 	*/
-};
-OFP_ASSERT(sizeof(struct action_push_mpls) == 8);
-
-struct ofp_action_mpls_label {
-    uint16_t type;                  /* OFPPAT_SET_MPLS_LABEL. */
-    uint16_t len;                   /* Length is 8. */
-    uint32_t label_out; 			/* outgoing mpls label. */
-};
-
-struct ofp_action_mpls_exp {
-    uint16_t type;                  /* OFPPAT_SET_MPLS_EXP. */
-    uint16_t len;                   /* Length is 8. */
-	uint8_t	exp;					/* experimental/class of service bits */
-	uint8_t pad[3];
-};
-
-struct ofp_vport_action_pop_mpls
-{
-    uint16_t type;                  /* OFPPAT_POP_MPLS. */
-    uint16_t len;                   /* Length is 8. */
-    struct action_pop_mpls apm;
-    uint8_t pad[4];
-};
-OFP_ASSERT(sizeof(struct ofp_vport_action_pop_mpls) == 16);
-
-struct ofp_vport_action_push_mpls
-{
-    uint16_t type;                  /* OFPPAT_PUSH_MPLS. */
-    uint16_t len;                   /* Length is 8. */
-    struct action_push_mpls apm;
-    uint8_t pad[4];
-};
-OFP_ASSERT(sizeof(struct ofp_vport_action_push_mpls) == 16);
-
-struct ofp_vport_action_set_mpls_label
-{
-    uint16_t type;                  /* OFPPAT_SET_MPLS_LABEL. */
-    uint16_t len;                   /* Length is 8. */
-    uint32_t label_out; 			/* outgoing mpls label. */
-};
-OFP_ASSERT(sizeof(struct ofp_vport_action_set_mpls_label) == 8);
-
-struct ofp_vport_action_set_mpls_exp
-{
-    uint16_t type;                  /* OFPPAT_SET_MPLS_EXP. */
-    uint16_t len;                   /* Length is 8. */
-    uint8_t	exp;					/* experimental/class of service bits */
-    uint8_t pad[3];
-};
-OFP_ASSERT(sizeof(struct ofp_vport_action_set_mpls_exp) == 8);
-// MAH: end
 
 /* Why is this packet being sent to the controller? */
 enum ofp_packet_in_reason {
@@ -462,23 +337,8 @@ enum ofp_action_type {
     OFPAT_SET_NW_DST,       /* IP destination address. */
     OFPAT_SET_TP_SRC,       /* TCP/UDP source port. */
     OFPAT_SET_TP_DST,       /* TCP/UDP destination port. */
-    // MAH: start
-    OFPAT_SET_MPLS_LABEL,	/* Set the MPLS label. */
-    OFPAT_SET_MPLS_EXP,		/* Set the MPLS EXP bits. */
-    // MAH: end
     OFPAT_VENDOR = 0xffff
 };
-
-// MAH: start
-// port table actions
-enum ofp_vport_action_type {
-	OFPPAT_OUTPUT,		   		/* Output to switch port .	*/
-	OFPPAT_POP_MPLS,       		/* Pop MLPS label. 			*/
-    OFPPAT_PUSH_MPLS,      		/* Push MPLS label. 		*/
-    OFPPAT_SET_MPLS_LABEL,		/* Set MPLS label.	 		*/
-    OFPPAT_SET_MPLS_EXP			/* Set MPLS exp bits.		*/
-};
-// MAH: end
 
 /* Action structure for OFPAT_OUTPUT, which sends packets out 'port'.
  * When the 'port' is the OFPP_CONTROLLER, 'max_len' indicates the max
@@ -487,19 +347,10 @@ enum ofp_vport_action_type {
 struct ofp_action_output {
     uint16_t type;                  /* OFPAT_OUTPUT. */
     uint16_t len;                   /* Length is 8. */
-    // MAH: start
-    // port space is now 32-bits to accomodate virtual ports
-    // first 16-bits have same meaning as before
-    uint32_t port;					/* Output port. */
-    //uint16_t port;                  /* Output port. */
-    // MAH: end
+    uint16_t port;                  /* Output port. */
     uint16_t max_len;               /* Max length to send to controller. */
-    uint8_t  pad[6];				/* Padding. */
 };
-// MAH: start
-OFP_ASSERT(sizeof(struct ofp_action_output) == 16);
-//OFP_ASSERT(sizeof(struct ofp_action_output) == 8);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_action_output) == 8);
 
 /* The VLAN id is 12 bits, so we can use the entire 16 bits to indicate
  * special conditions.  All ones is used to match that no VLAN id was
@@ -522,11 +373,7 @@ struct ofp_action_vlan_pcp {
     uint8_t vlan_pcp;               /* VLAN priority. */
     uint8_t pad[3];
 };
-// MAH: start
-// bug fix
-//OFP_ASSERT(sizeof(struct ofp_action_vlan_vid) == 8);
 OFP_ASSERT(sizeof(struct ofp_action_vlan_pcp) == 8);
-// MAH: end
 
 /* Action structure for OFPAT_SET_DL_SRC/DST. */
 struct ofp_action_dl_addr {
@@ -608,7 +455,6 @@ enum ofp_flow_wildcards {
     OFPFW_TP_SRC   = 1 << 6,  /* TCP/UDP source port. */
     OFPFW_TP_DST   = 1 << 7,  /* TCP/UDP destination port. */
 
-
     /* IP source address wildcard bit count.  0 is exact match, 1 ignores the
      * LSB, 2 ignores the 2 least-significant bits, ..., 32 and higher wildcard
      * the entire field.  This is the *opposite* of the usual convention where
@@ -624,18 +470,8 @@ enum ofp_flow_wildcards {
     OFPFW_NW_DST_MASK = ((1 << OFPFW_NW_DST_BITS) - 1) << OFPFW_NW_DST_SHIFT,
     OFPFW_NW_DST_ALL = 32 << OFPFW_NW_DST_SHIFT,
 
-    // MAH: start
-    // add support for two MPLS labels
-    OFPFW_MPLS_L1	= 1 << 20, /* MPLS Label 1. */
-    OFPFW_MPLS_L2	= 1 << 21, /* MPLS label 2. */
-    // MAH: end
-
     /* Wildcard all fields. */
-    // MAH: start
-    // now have 22 bits after adding MPLS
-    //OFPFW_ALL = ((1 << 20) - 1)
-    OFPFW_ALL = ((1 << 22) - 1)
-    // MAH: end
+    OFPFW_ALL = ((1 << 20) - 1)
 };
 
 /* The wildcards for ICMP type and code fields use the transport source
@@ -666,25 +502,18 @@ struct ofp_match {
     uint8_t dl_src[OFP_ETH_ALEN]; /* Ethernet source address. */
     uint8_t dl_dst[OFP_ETH_ALEN]; /* Ethernet destination address. */
     uint16_t dl_vlan;          /* Input VLAN. */
+    uint8_t dl_vlan_pcp;       /* Input VLAN priority. */
+    uint8_t pad1[1];           /* Align to 64-bits */
     uint16_t dl_type;          /* Ethernet frame type. */
+    uint8_t nw_tos;            /* IP ToS (actually DSCP field, 6 bits). */
     uint8_t nw_proto;          /* IP protocol. */
-    uint8_t pad;               /* Align to 32-bits. */
+    uint8_t pad[2];               /* Align to 64-bits. */
     uint32_t nw_src;           /* IP source address. */
     uint32_t nw_dst;           /* IP destination address. */
     uint16_t tp_src;           /* TCP/UDP source port. */
     uint16_t tp_dst;           /* TCP/UDP destination port. */
-    // MAH: start
-    // Add support for two MPLS labels to the flow table.
-    // note: leave the pad field to preserve 32-bit alignment
-    uint32_t mpls_label1;		/* Top of label stack */
-    uint32_t mpls_label2;		/* Second label (if available)*/
-    // MAH: end
 };
-// MAH: start
-// MPLS adds 8 more bytes to the size
-//OFP_ASSERT(sizeof(struct ofp_match) == 36);
-OFP_ASSERT(sizeof(struct ofp_match) == 44);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_match) == 40);
 
 /* The match fields for ICMP type and code use the transport source and
  * destination port fields, respectively. */
@@ -702,6 +531,7 @@ OFP_ASSERT(sizeof(struct ofp_match) == 44);
 struct ofp_flow_mod {
     struct ofp_header header;
     struct ofp_match match;      /* Fields to match */
+    uint64_t cookie;             /* Opaque controller-issued identifier. */
 
     /* Flow actions. */
     uint16_t command;             /* One of OFPFC_*. */
@@ -714,45 +544,12 @@ struct ofp_flow_mod {
                                      matching entries to include this as an
                                      output port.  A value of OFPP_NONE
                                      indicates no restriction. */
-    uint8_t pad[2];               /* Align to 32-bits. */
-    uint32_t reserved;            /* Reserved for future use. */
+    uint16_t flags;               /* Reserved for future use. */
     struct ofp_action_header actions[0]; /* The action length is inferred
                                             from the length field in the
                                             header. */
 };
-// MAH: start
-// add 8 more bytes since the ofp_match struct is now 8 bytes bigger
-//OFP_ASSERT(sizeof(struct ofp_flow_mod) == 64);
 OFP_ASSERT(sizeof(struct ofp_flow_mod) == 72);
-// MAH: end
-
-
-// MAH: start
-// Add or remove a virtual port
-struct ofp_vport_mod {
-    struct ofp_header header;
-    uint32_t vport;      	/* virtual port number. */
-    uint32_t parent_port; 	/* parent port number */
-
-
-    /* Flow actions. */
-    uint16_t command;             /* One of OFPFC_*. */
-
-    uint8_t pad[6];               /* Align to 32-bits. */
-    //uint32_t reserved;          /* Reserved for future use. */
-    struct ofp_action_header actions[0]; /* Uses the same action header as the flow-table
-										 The action length is inferred
-										 from the length field in the
-										 header. */
-};
-OFP_ASSERT(sizeof(struct ofp_vport_mod) == 24);
-
-enum ofp_vport_mod_command {
-    OFPVP_ADD,			/* New virtual port. */
-    OFPVP_DELETE		/* Delete virtual port. */
-};
-// MAH: end
-
 
 /* Why did this flow expire? */
 enum ofp_flow_expired_reason {
@@ -770,15 +567,14 @@ struct ofp_flow_expired {
     uint8_t pad[1];           /* Align to 32-bits. */
 
     uint32_t duration;        /* Time flow was alive in seconds. */
+    uint32_t duration_nsec;   /* Time flow was alive in nanoseconds beyond duration_sec. */
+    uint16_t idle_timeout;    /* Idle timeout from original flow mod. */
+
     uint8_t pad2[4];          /* Align to 64-bits. */
     uint64_t packet_count;
     uint64_t byte_count;
 };
-// MAH: start
-// add 8 more bytes since the ofp_match struct is now 8 bytes bigger
-//OFP_ASSERT(sizeof(struct ofp_flow_expired) == 72);
-OFP_ASSERT(sizeof(struct ofp_flow_expired) == 80);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_flow_expired) == 88);
 
 /* Values for 'type' in ofp_error_message.  These values are immutable: they
  * will not change in future versions of the protocol (although new values may
@@ -788,9 +584,6 @@ enum ofp_error_type {
     OFPET_BAD_REQUEST,          /* Request was not understood. */
     OFPET_BAD_ACTION,           /* Error in action description. */
     OFPET_FLOW_MOD_FAILED,       /* Problem modifying flow entry. */
-    // MAH: start
-    OFPET_VPORT_MOD_FAILED		/* Problem modifying port table entry. */
-    // MAH: end
 };
 
 /* ofp_error_msg 'code' values for OFPET_HELLO_FAILED.  'data' contains an
@@ -859,22 +652,10 @@ enum ofp_stats_types {
      * The reply body is an array of struct ofp_table_stats. */
     OFPST_TABLE,
 
-    // MAH: start
-    // Now used for physical or virtual ports
-    // Also, the request body should no longer be empty but
-    // should contain a list of 32-bit port numbers to return where
-    // the number of ports is inferred by the length of the header
-    // MAH: end
     /* Physical port statistics.
      * The request body is empty.
      * The reply body is an array of struct ofp_port_stats. */
     OFPST_PORT,
-
-    // MAH: start
-    // The request body is empty.
-    // The reply body is a single struct ofp_port_table_stats.
-    OFPST_PORT_TABLE,
-    // MAH: end
 
     /* Vendor extension.
      * The request and reply bodies begin with a 32-bit vendor ID, which takes
@@ -925,11 +706,7 @@ struct ofp_flow_stats_request {
                                  as an output port.  A value of OFPP_NONE
                                  indicates no restriction. */
 };
-// MAH: start
-// add 8 more bytes since the ofp_match struct is now 8 bytes bigger
-//OFP_ASSERT(sizeof(struct ofp_flow_stats_request) == 40);
-OFP_ASSERT(sizeof(struct ofp_flow_stats_request) == 48);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_flow_stats_request) == 44);
 
 /* Body of reply to OFPST_FLOW request. */
 struct ofp_flow_stats {
@@ -938,20 +715,18 @@ struct ofp_flow_stats {
     uint8_t pad;
     struct ofp_match match;   /* Description of fields. */
     uint32_t duration;        /* Time flow has been alive in seconds. */
+    uint32_t duration_nsec;
     uint16_t priority;        /* Priority of the entry. Only meaningful
                                  when this is not an exact-match entry. */
     uint16_t idle_timeout;    /* Number of seconds idle before expiration. */
     uint16_t hard_timeout;    /* Number of seconds before expiration. */
-    uint16_t pad2[3];         /* Pad to 64 bits. */
+    uint8_t pad2[6];         /* Pad to 64 bits. */
+    uint64_t cookie;          /* Opaque controller-issued identifier. */
     uint64_t packet_count;    /* Number of packets in flow. */
     uint64_t byte_count;      /* Number of bytes in flow. */
     struct ofp_action_header actions[0]; /* Actions. */
 };
-// MAH: start
-// add 8 more bytes since the ofp_match struct is now 8 bytes bigger
-//OFP_ASSERT(sizeof(struct ofp_flow_stats) == 72);
-OFP_ASSERT(sizeof(struct ofp_flow_stats) == 80);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_flow_stats) == 88);
 
 /* Body for ofp_stats_request of type OFPST_AGGREGATE. */
 struct ofp_aggregate_stats_request {
@@ -963,11 +738,7 @@ struct ofp_aggregate_stats_request {
                                  as an output port.  A value of OFPP_NONE
                                  indicates no restriction. */
 };
-// MAH: start
-// add 8 more bytes since the ofp_match struct is now 8 bytes bigger
-//OFP_ASSERT(sizeof(struct ofp_aggregate_stats_request) == 40);
-OFP_ASSERT(sizeof(struct ofp_aggregate_stats_request) == 48);
-// MAH: end
+OFP_ASSERT(sizeof(struct ofp_aggregate_stats_request) == 44);
 
 /* Body of reply to OFPST_AGGREGATE request. */
 struct ofp_aggregate_stats_reply {
@@ -993,34 +764,11 @@ struct ofp_table_stats {
 };
 OFP_ASSERT(sizeof(struct ofp_table_stats) == 64);
 
-// MAH: start
-// Virtual port table stats are similar to flow table stats
-// it indicates how many virtual port table entries there are
-// and how many are supported by the switch, etc
-/* Body of reply to OFPST_TABLE request. */
-struct ofp_vport_table_stats {
-    uint32_t max_vports;    /* Max number of entries supported */
-    uint32_t active_vports;   /* Number of active entries */
-    uint64_t lookup_count;   /* Number of port entries looked up in port table */
-    uint64_t port_match_count;  /* Number of entries looked up in port table */
-    uint64_t chain_match_count;  /* Number of entries accessed by chaining */
-};
-OFP_ASSERT(sizeof(struct ofp_vport_table_stats) == 32);
-// MAH: end
-
-// MAH: start
-// Now used for physical or virtual ports
-// MAH: end
 /* Body of reply to OFPST_PORT request. If a counter is unsupported, set
  * the field to all ones. */
 struct ofp_port_stats {
-	// MAH: start
-	// extend port_no to 32-bits
-    //uint16_t port_no;
-    //uint8_t pad[6];          /* Align to 64-bits. */
-	uint32_t port_no;
-	uint8_t pad[4];          /* Align to 64-bits. */
-    // MAH: end
+    uint16_t port_no;
+    uint8_t pad[6];          /* Align to 64-bits. */
     uint64_t rx_packets;     /* Number of received packets. */
     uint64_t tx_packets;     /* Number of transmitted packets. */
     uint64_t rx_bytes;       /* Number of received bytes. */
@@ -1039,11 +787,8 @@ struct ofp_port_stats {
     uint64_t rx_over_err;    /* Number of packets with RX overrun. */
     uint64_t rx_crc_err;     /* Number of CRC errors. */
     uint64_t collisions;     /* Number of collisions. */
-    // MAH: start
-    uint64_t mpls_ttl0_dropped;	 /* Number of MPLS packets dropped due to ttl 0. */
-    // MAH: end
 };
-OFP_ASSERT(sizeof(struct ofp_port_stats) == 112);
+OFP_ASSERT(sizeof(struct ofp_port_stats) == 104);
 
 /* Vendor extension. */
 struct ofp_vendor_header {

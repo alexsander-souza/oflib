@@ -1,6 +1,6 @@
 /* Copyright (c) 2008 The Board of Trustees of The Leland Stanford
  * Junior University
- *
+ * 
  * We are making the OpenFlow specification and associated documentation
  * (Software) available for public use and benefit with the expectation
  * that others will use, modify and enhance the Software and contribute
@@ -13,10 +13,10 @@
  * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- *
+ * 
  * The above copyright notice and this permission notice shall be
  * included in all copies or substantial portions of the Software.
- *
+ * 
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -25,47 +25,47 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
+ * 
  * The name and trademarks of copyright holder(s) may NOT be used in
  * advertising or publicity pertaining to the Software or any
  * derivatives without specific, written prior permission.
  */
+#ifndef VCONN_SSL_H
+#define VCONN_SSL_H 1
 
-#ifndef DP_ACT_H
-#define DP_ACT_H 1
+#include <stdbool.h>
 
-#include "openflow/openflow.h"
-#include "switch-flow.h"
-#include "datapath.h"
+#ifdef HAVE_OPENSSL
+bool vconn_ssl_is_configured(void);
+void vconn_ssl_set_private_key_file(const char *file_name);
+void vconn_ssl_set_certificate_file(const char *file_name);
+void vconn_ssl_set_ca_cert_file(const char *file_name, bool bootstrap);
+void vconn_ssl_set_peer_ca_cert_file(const char *file_name);
 
-#define ACT_VALIDATION_OK ((uint16_t)-1)
+#define VCONN_SSL_LONG_OPTIONS                      \
+        {"private-key", required_argument, 0, 'p'}, \
+        {"certificate", required_argument, 0, 'c'}, \
+        {"ca-cert",     required_argument, 0, 'C'},
 
-void do_output(struct datapath *dp, struct ofpbuf *buffer, int in_port,
-          size_t max_len, int out_port, bool ignore_no_fwd);
+#define VCONN_SSL_OPTION_HANDLERS                       \
+        case 'p':                                       \
+            vconn_ssl_set_private_key_file(optarg);     \
+            break;                                      \
+                                                        \
+        case 'c':                                       \
+            vconn_ssl_set_certificate_file(optarg);     \
+            break;                                      \
+                                                        \
+        case 'C':                                       \
+            vconn_ssl_set_ca_cert_file(optarg, false);  \
+            break;
+#else /* !HAVE_OPENSSL */
+static inline bool vconn_ssl_is_configured(void) 
+{
+    return false;
+}
+#define VCONN_SSL_LONG_OPTIONS
+#define VCONN_SSL_OPTION_HANDLERS
+#endif /* !HAVE_OPENSSL */
 
-void set_vlan_vid(struct ofpbuf                  *buffer,
-                  struct sw_flow_key             *key,
-                  const struct ofp_action_header *ah);
-void set_vlan_pcp(struct ofpbuf                  *buffer,
-                  struct sw_flow_key             *key,
-                  const struct ofp_action_header *ah);
-void strip_vlan(struct ofpbuf                  *buffer,
-                struct sw_flow_key             *key,
-                const struct ofp_action_header *ah);
-void set_dl_addr(struct ofpbuf                  *buffer,
-                 struct sw_flow_key             *key,
-                 const struct ofp_action_header *ah);
-void set_nw_addr(struct ofpbuf                  *buffer,
-                 struct sw_flow_key             *key,
-                 const struct ofp_action_header *ah);
-void set_tp_port(struct ofpbuf                  *buffer,
-                 struct sw_flow_key             *key,
-                 const struct ofp_action_header *ah);
-
-uint16_t validate_actions(struct datapath *, const struct sw_flow_key *,
-		const struct ofp_action_header *, size_t);
-void execute_actions(struct datapath *, struct ofpbuf *,
-		struct sw_flow_key *, const struct ofp_action_header *,
-		size_t action_len, int ignore_no_fwd);
-
-#endif /* dp_act.h */
+#endif /* vconn-ssl.h */

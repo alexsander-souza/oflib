@@ -193,7 +193,7 @@ ofp_packet_in(struct ds *string, const void *oh, size_t len, int verbosity)
         match.dl_vlan = flow.dl_vlan;
         match.dl_type = flow.dl_type;
         match.nw_proto = flow.nw_proto;
-        match.pad = 0;
+        // match.pad = 0;
         match.nw_src = flow.nw_src;
         match.nw_dst = flow.nw_dst;
         match.tp_src = flow.tp_src;
@@ -350,10 +350,7 @@ ofp_print_action(struct ds *string, const struct ofp_action_header *ah,
     switch (type) {
     case OFPAT_OUTPUT: {
         struct ofp_action_output *oa = (struct ofp_action_output *)ah;
-        // MAH: now 32-bits
-        uint32_t port = ntohl(oa->port);
-        //uint16_t port = ntohs(oa->port);
-        // MAH: end
+        uint16_t port = ntohs(oa->port);
         if (port < OFPP_MAX) {
             ds_put_format(string, "output:%"PRIu16, port);
         } else {
@@ -627,15 +624,6 @@ ofp_print_switch_features(struct ds *string, const void *oh, size_t len,
     free(port_list);
 }
 
-// MAH: start
-static void ofp_print_vport_table_features(struct ds *string, const void *oh,
-										   size_t len, int verbosity)
-{
-    const struct ofp_vport_table_features *ovpf = oh;
-	ds_put_format(string, "actions:%#x\n", ntohl(ovpf->actions));
-}
-// MAH: end
-
 /* Pretty-print the struct ofp_switch_config of 'len' bytes at 'oh' to 'string'
  * at the given 'verbosity' level. */
 static void
@@ -846,18 +834,6 @@ ofp_print_port_mod(struct ds *string, const void *oh, size_t len,
     }
 }
 
-// MAH: start
-static void
-ofp_print_vport_mod(struct ds *string, const void *oh, size_t len,
-                   int verbosity)
-{
-    const struct ofp_vport_mod *ovpm = oh;
-
-    ds_put_format(string, "vport: %u: command: %u\n",
-            ntohl(ovpm->vport), ntohl(ovpm->command));
-}
-// MAH: end
-
 struct error_type {
     int type;
     int code;
@@ -885,9 +861,6 @@ static const struct error_type error_types[] = {
 
     ERROR_TYPE(OFPET_FLOW_MOD_FAILED),
     ERROR_CODE(OFPET_FLOW_MOD_FAILED, OFPFMFC_ALL_TABLES_FULL)
-    // MAH: start
-    ,ERROR_TYPE(OFPET_VPORT_MOD_FAILED)
-    // MAH: end
 };
 #define N_ERROR_TYPES ARRAY_SIZE(error_types)
 
@@ -1107,10 +1080,7 @@ ofp_port_stats_reply(struct ds *string, const void *body, size_t len,
     }
 
     for (; n--; ps++) {
-    	// MAH: start
-        //ds_put_format(string, "  port %2"PRIu16": ", ntohs(ps->port_no));
-    	ds_put_format(string, "  port %4"PRIu32": ", ntohl(ps->port_no));
-        // MAH: end
+        ds_put_format(string, "  port %2"PRIu16": ", ntohs(ps->port_no));
 
         ds_put_cstr(string, "rx ");
         print_port_stat(string, "pkts=", ntohll(ps->rx_packets), 1);
@@ -1126,10 +1096,7 @@ ofp_port_stats_reply(struct ds *string, const void *body, size_t len,
         print_port_stat(string, "bytes=", ntohll(ps->tx_bytes), 1);
         print_port_stat(string, "drop=", ntohll(ps->tx_dropped), 1);
         print_port_stat(string, "errs=", ntohll(ps->tx_errors), 1);
-        print_port_stat(string, "coll=", ntohll(ps->collisions), 1);
-        // MAH: start
-        print_port_stat(string, "mpls_ttl0_drop=", ntohll(ps->mpls_ttl0_dropped), 0);
-        // MAH: end
+        print_port_stat(string, "coll=", ntohll(ps->collisions), 0);
     }
 }
 
@@ -1160,29 +1127,6 @@ ofp_table_stats_reply(struct ds *string, const void *body, size_t len,
                     ntohll(ts->matched_count));
      }
 }
-
-// MAH: start
-static void
-ofp_port_table_stats_reply(struct ds *string, const void *body, size_t len,
-                     int verbosity)
-{
-    const struct ofp_vport_table_stats *pts = body;
-    ds_put_format(string, " port table statistics\n");
-    if (verbosity < 1) {
-        return;
-    }
-
-	ds_put_format(string, "max=%6"PRIu32", ", ntohl(pts->max_vports));
-	ds_put_format(string, "active=%"PRIu32"\n", ntohl(pts->active_vports));
-	ds_put_cstr(string, "               ");
-	ds_put_format(string, "lookup=%"PRIu64", ",
-				ntohll(pts->lookup_count));
-	ds_put_format(string, "port_matches=%"PRIu64", ",
-				ntohll(pts->port_match_count));
-	ds_put_format(string, "chain_matches=%"PRIu64"\n",
-				ntohll(pts->chain_match_count));
-}
-// MAH: end
 
 static void
 vendor_stat(struct ds *string, const void *body, size_t len,
@@ -1248,23 +1192,9 @@ print_stats(struct ds *string, int type, const void *body, size_t body_len,
         {
             OFPST_PORT,
             "port",
-            // MAH: start
-            //{ 0, 0, NULL, },
-            { 0, SIZE_MAX, NULL, }, // body now supports a list of port numbers
-            // MAH: end
+            { 0, 0, NULL, },
             { 0, SIZE_MAX, ofp_port_stats_reply },
         },
-        // MAH: start
-        {
-			OFPST_PORT_TABLE,
-			"port_table",
-			// MAH: start
-			//{ 0, 0, NULL, },
-			{ 0, sizeof(struct ofp_vport_table_stats), NULL, }, // body now supports a list of port numbers
-			// MAH: end
-			{ 0, sizeof(struct ofp_vport_table_stats), ofp_port_table_stats_reply },
-		},
-        // MAH: end
         {
             OFPST_VENDOR,
             "vendor-specific",
@@ -1380,20 +1310,6 @@ static const struct openflow_packet packets[] = {
         sizeof (struct ofp_switch_features),
         ofp_print_switch_features,
     },
-    // MAH: start
-    {
-    	OFPT_VPORT_TABLE_FEATURES_REQUEST,
-    	"vport_table_features_request",
-    	sizeof (struct ofp_header),
-    	NULL,
-    },
-    {
-    	OFPT_VPORT_TABLE_FEATURES_REPLY,
-		"vport_table_features_reply",
-		sizeof (struct ofp_vport_table_features),
-		ofp_print_vport_table_features,
-	},
-    // MAH: end
     {
         OFPT_GET_CONFIG_REQUEST,
         "get_config_request",
@@ -1442,15 +1358,6 @@ static const struct openflow_packet packets[] = {
         sizeof (struct ofp_port_mod),
         ofp_print_port_mod,
     },
-    // MAH: start
-    // add vport_mod
-    {
-        OFPT_VPORT_MOD,
-        "vport_mod",
-        sizeof (struct ofp_vport_mod),
-        ofp_print_vport_mod,
-    },
-    // MAH: end
     {
         OFPT_PORT_STATUS,
         "port_status",

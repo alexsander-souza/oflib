@@ -88,9 +88,6 @@ void flow_replace_acts(struct sw_flow *, const struct ofp_action_header *,
 void flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from);
 void flow_fill_match(struct ofp_match* to, const struct sw_flow_key* from);
 
-// MAH: start
-void print_flow_(const struct flow *flow, uint32_t wildcards);
-// MAH: end
 void print_flow(const struct sw_flow_key *);
 bool flow_timeout(struct sw_flow *flow);
 void flow_used(struct sw_flow *flow, struct ofpbuf *buffer);

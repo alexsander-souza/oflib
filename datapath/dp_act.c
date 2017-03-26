@@ -34,10 +34,7 @@ validate_output(struct datapath *dp, const struct sw_flow_key *key,
 	return ACT_VALIDATION_OK;
 }
 
-// MAH: start
-//static int
 int
-// MAH: end
 do_output(struct datapath *dp, struct sk_buff *skb, size_t max_len,
 		int out_port, int ignore_no_fwd)
 {
@@ -97,71 +94,6 @@ modify_vlan_tci(struct sk_buff *skb, struct sw_flow_key *key,
 	return skb;
 }
 
-// MAH: end
-// rewrite the 20-bit label for the label on the top of the label stack.
-struct sk_buff *set_mpls_label_act(struct sk_buff *skb,
-								   struct sw_flow_key *key,
-								   const uint32_t label_out)
-{
-	mpls_header mpls_h;
-	uint32_t value_to_swap;
-	uint16_t eth_proto;
-
-	//printk("set_mpls_label_act \n");
-	eth_proto = ntohs(key->dl_type);
-
-	if (eth_proto == ETH_TYPE_MPLS_UNICAST) {
-		mpls_h.value = htonl(*((uint32_t*)mpls_hdr(skb)));
-		mpls_h.label = ntohl(label_out);
-		value_to_swap = htonl(mpls_h.value);
-		*((uint32_t*)mpls_hdr(skb)) = value_to_swap;
-	}
-
-	return skb;
-}
-
-
-// rewrite the 3 exp bits for the label on the top of the label stack.
-struct sk_buff *set_mpls_exp_act(struct sk_buff *skb,
-							     struct sw_flow_key *key,
-							     const uint8_t exp)
-{
-	mpls_header mpls_h;
-	uint32_t value_to_swap;
-	uint16_t eth_proto;
-
-	//printk("set_mpls_exp_act \n");
-	eth_proto = ntohs(key->dl_type);
-
-	if (eth_proto == ETH_TYPE_MPLS_UNICAST) {
-		mpls_h.value = htonl(*((uint32_t*)mpls_hdr(skb)));
-		mpls_h.exp = exp;
-		value_to_swap = htonl(mpls_h.value);
-		*((uint32_t*)mpls_hdr(skb)) = value_to_swap;
-	}
-
-	return skb;
-}
-// MAH: end
-
-// MAH: start
-struct sk_buff *
-set_mpls_label(struct sk_buff *skb, struct sw_flow_key *key,
-        const struct ofp_action_header *ah)
-{
-    struct ofp_action_mpls_label *ml = (struct ofp_action_mpls_label *)ah;
-    set_mpls_label_act(skb, key, ml->label_out);
-}
-
-struct sk_buff *
-set_mpls_exp(struct sk_buff *skb, struct sw_flow_key *key,
-        const struct ofp_action_header *ah)
-{
-    struct ofp_action_mpls_exp *me = (struct ofp_action_mpls_exp *)ah;
-    set_mpls_exp_act(skb, key, me->exp);
-}
-// MAH: end
-
 static struct sk_buff *
 set_vlan_vid(struct sk_buff *skb, struct sw_flow_key *key,
 		const struct ofp_action_header *ah)
@@ -215,9 +147,6 @@ set_dl_addr(struct sk_buff *skb, struct sw_flow_key *key,
  * covered by the sum has been changed from 'from' to 'to'.  If set,
  * 'pseudohdr' indicates that the field is in the TCP or UDP pseudo-header.
  * Based on nf_proto_csum_replace4. */
-// MAH: start
-//static
-// MAH: end
 void update_csum(__sum16 *sum, struct sk_buff *skb,
 			__be32 from, __be32 to, int pseudohdr)
 {
@@ -374,21 +303,7 @@ static const struct openflow_action of_actions[] = {
 		sizeof(struct ofp_action_tp_port),
 		NULL,
 		set_tp_port
-	},
-	// MAH: start
-	[OFPAT_SET_MPLS_LABEL] = {
-		sizeof(struct ofp_action_mpls_label),
-		sizeof(struct ofp_action_mpls_label),
-		NULL,
-		set_mpls_label
-	},
-	[OFPAT_SET_MPLS_EXP] = {
-		sizeof(struct ofp_action_mpls_exp),
-		sizeof(struct ofp_action_mpls_exp),
-		NULL,
-		set_mpls_exp
 	}
-	// MAH: end
 	/* OFPAT_VENDOR is not here, since it would blow up the array size. */
 };
 
@@ -556,11 +471,7 @@ void execute_actions(struct datapath *dp, struct sk_buff *skb,
 
 		if (likely(ah->type == htons(OFPAT_OUTPUT))) {
 			struct ofp_action_output *oa = (struct ofp_action_output *)p;
-			// MAH: start
-			// 32-bit now
-			prev_port = ntohl(oa->port);
-			//prev_port = ntohs(oa->port);
-			// MAH: end
+			prev_port = ntohs(oa->port);
 			max_len = ntohs(oa->max_len);
 		} else {
 			uint16_t type = ntohs(ah->type);
@@ -580,12 +491,10 @@ void execute_actions(struct datapath *dp, struct sk_buff *skb,
 		p += len;
 		actions_len -= len;
 	}
-	if (prev_port != -1) {
+	if (prev_port != -1)
 		do_output(dp, skb, max_len, prev_port, ignore_no_fwd);
-	}
-	else {
+	else
 		kfree_skb(skb);
-	}
 }
 
 /* Utility functions. */

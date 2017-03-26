@@ -47,8 +47,6 @@ static inline int
 flow_fields_match(const struct flow *a, const struct flow *b, uint16_t w,
                   uint32_t src_mask, uint32_t dst_mask)
 {
-//	print_flow_(a, w);
-	//print_flow_(b, w);
     return ((w & OFPFW_IN_PORT || a->in_port == b->in_port)
             && (w & OFPFW_DL_VLAN || a->dl_vlan == b->dl_vlan)
             && (w & OFPFW_DL_SRC || eth_addr_equals(a->dl_src, b->dl_src))
@@ -58,15 +56,7 @@ flow_fields_match(const struct flow *a, const struct flow *b, uint16_t w,
             && !((a->nw_dst ^ b->nw_dst) & dst_mask)
             && (w & OFPFW_NW_PROTO || a->nw_proto == b->nw_proto)
             && (w & OFPFW_TP_SRC || a->tp_src == b->tp_src)
-            && (w & OFPFW_TP_DST || a->tp_dst == b->tp_dst)
-    // MAH: start
-    // match on the 2 MPLS labels as well
-    // use a wildcard for label 2 when there is only one MPLS label
-            ///);
-            && (w & OFPFW_MPLS_L1 || a->mpls_label1 == b->mpls_label1)
-            && (w & OFPFW_MPLS_L2 || a->mpls_label2 == b->mpls_label2));
-    // MAH: end
-
+            && (w & OFPFW_TP_DST || a->tp_dst == b->tp_dst));
 }
 
 static uint32_t make_nw_mask(int n_wild_bits)
@@ -113,11 +103,6 @@ void
 flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from)
 {
     to->wildcards = ntohl(from->wildcards) & OFPFW_ALL;
-    // MAH: start
-    // by default wild card the MPLS fields and only set them to
-    // 0 when we have valid MPLS labels
-    to->wildcards |= OFPFW_MPLS_L1 | OFPFW_MPLS_L2;
-    // MAH: end
     to->flow.reserved = 0;
     to->flow.in_port = from->in_port;
     to->flow.dl_vlan = from->dl_vlan;
@@ -125,15 +110,8 @@ flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from)
     memcpy(to->flow.dl_dst, from->dl_dst, ETH_ADDR_LEN);
     to->flow.dl_type = from->dl_type;
 
-    // MAH: start
-    to->flow.mpls_label1 = from->mpls_label1;
-    to->flow.mpls_label2 = from->mpls_label2;
-    // MAH: end
-
     to->flow.nw_src = to->flow.nw_dst = to->flow.nw_proto = 0;
     to->flow.tp_src = to->flow.tp_dst = 0;
-
-
 
 #define OFPFW_TP (OFPFW_TP_SRC | OFPFW_TP_DST)
 #define OFPFW_NW (OFPFW_NW_SRC_MASK | OFPFW_NW_DST_MASK | OFPFW_NW_PROTO)
@@ -161,27 +139,6 @@ flow_extract_match(struct sw_flow_key* to, const struct ofp_match* from)
              * instead of falling into table-linear. */
             to->wildcards &= ~OFPFW_TP;
         }
-
-    // MAH: start
-    // If packet is MPLS, we include up to the fist 2 labels
-    // from the label stack
-    } else if (from->dl_type == htons(ETH_TYPE_MPLS_UNICAST)) {
-
-    	// just assume that there is a second label
-    	// the second will be wildcarded if we match on only one
-    	to->wildcards &= ~OFPFW_MPLS_L1;
-    	if (ntohl(to->flow.mpls_label1) >= 0x00100000) {
-    		printf("Invalid first MPLS label %x\n", to->flow.mpls_label1);
-    	}
-    	// a value > 2^20 means mpls_label2 is not valid
-    	// so set the mask bit
-    	if (ntohl(to->flow.mpls_label2) < 0x00100000) {
-    		to->wildcards &= ~OFPFW_MPLS_L2;
-    	}
-    	// wildcard remaining headers
-    	to->wildcards |= OFPFW_NW | OFPFW_TP;
-    // MAH: end
-
     } else {
         /* Network and transport layer fields are undefined.  Mark them
          * as exact-match to allow such flows to reside in table-hash,
@@ -205,14 +162,10 @@ flow_fill_match(struct ofp_match* to, const struct sw_flow_key* from)
     to->dl_type   = from->flow.dl_type;
     to->nw_src        = from->flow.nw_src;
     to->nw_dst        = from->flow.nw_dst;
-    // MAH: start
-    to->mpls_label1	  = from->flow.mpls_label1;
-    to->mpls_label2   = from->flow.mpls_label2;
-    // MAH: end
     to->nw_proto  = from->flow.nw_proto;
     to->tp_src        = from->flow.tp_src;
     to->tp_dst        = from->flow.tp_dst;
-    to->pad           = 0;
+    // to->pad           = 0;
 }
 
 /* Allocates and returns a new flow with room for 'actions_len' actions.
@@ -268,13 +221,13 @@ void flow_replace_acts(struct sw_flow *flow,
     return;
 }
 
-// MAH: start
-/*
-print_flow(const struct flow *f)
+/* Prints a representation of 'key' to the kernel log. */
+void
+print_flow(const struct sw_flow_key *key)
 {
     const struct flow *f = &key->flow;
     printf("wild%08x port%04x:vlan%04x mac%02x:%02x:%02x:%02x:%02x:%02x"
-           "->%02x:%02x:%02x:%02x:%02x:%02x"
+           "->%02x:%02x:%02x:%02x:%02x:%02x "
            "proto%04x ip%u.%u.%u.%u->%u.%u.%u.%u port%d->%d\n",
            key->wildcards, ntohs(f->in_port), ntohs(f->dl_vlan),
            f->dl_src[0], f->dl_src[1], f->dl_src[2],
@@ -292,39 +245,6 @@ print_flow(const struct flow *f)
            ((unsigned char *)&f->nw_dst)[3],
            ntohs(f->tp_src), ntohs(f->tp_dst));
 }
-*/
-
-/* Prints a representation of 'key' to the kernel log. */
-void print_flow(const struct sw_flow_key *key)
-{
-	const struct flow *f = &key->flow;
-	print_flow_(f, key->wildcards);
-}
-
-void
-print_flow_(const struct flow *f, uint32_t wildcards)
-{
-	    printf("wild%08x port%04x:vlan%04x mac%02x:%02x:%02x:%02x:%02x:%02x"
-	           "->%02x:%02x:%02x:%02x:%02x:%02x mpls_l1:%05x mpls_l2:%05x "
-	           "proto%04x ip%u.%u.%u.%u->%u.%u.%u.%u port%d->%d\n",
-	           wildcards, ntohs(f->in_port), ntohs(f->dl_vlan),
-	           f->dl_src[0], f->dl_src[1], f->dl_src[2],
-	           f->dl_src[3], f->dl_src[4], f->dl_src[5],
-	           f->dl_dst[0], f->dl_dst[1], f->dl_dst[2],
-	           f->dl_dst[3], f->dl_dst[4], f->dl_dst[5],
-	           ntohl(f->mpls_label1), ntohl(f->mpls_label2),
-	           ntohs(f->dl_type),
-	           ((unsigned char *)&f->nw_src)[0],
-	           ((unsigned char *)&f->nw_src)[1],
-	           ((unsigned char *)&f->nw_src)[2],
-	           ((unsigned char *)&f->nw_src)[3],
-	           ((unsigned char *)&f->nw_dst)[0],
-	           ((unsigned char *)&f->nw_dst)[1],
-	           ((unsigned char *)&f->nw_dst)[2],
-	           ((unsigned char *)&f->nw_dst)[3],
-	           ntohs(f->tp_src), ntohs(f->tp_dst));
-}
-// MAH: end
 
 bool flow_timeout(struct sw_flow *flow)
 {
