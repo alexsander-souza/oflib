@@ -735,43 +735,7 @@ EXTRA_DIST = README.hwtables subst lib/dh1024.pem lib/dh2048.pem \
 	utilities/ofp-pki.in utilities/vlogconf.8.in \
 	switch/switch.8.in tests/test-stp.sh $(stp_files) \
 	third-party/README third-party/ofp-tcpdump.patch \
-	debian/._.gitignore debian/._automake.mk debian/._changelog \
-	debian/._commands debian/._compat debian/._control \
-	debian/._control.in debian/._control.modules.in \
-	debian/._copyright debian/._corekeeper.cron.daily \
-	debian/._corekeeper.init debian/._dirs \
-	debian/._ofp-switch-setup debian/._ofp-switch-setup.8 \
-	debian/._openflow-common.dirs debian/._openflow-common.install \
-	debian/._openflow-common.manpages \
-	debian/._openflow-controller.README.Debian \
-	debian/._openflow-controller.default \
-	debian/._openflow-controller.dirs \
-	debian/._openflow-controller.init \
-	debian/._openflow-controller.install \
-	debian/._openflow-controller.manpages \
-	debian/._openflow-controller.postinst \
-	debian/._openflow-datapath-module-_KVERS_.postinst.modules.in \
-	debian/._openflow-datapath-source.README.Debian \
-	debian/._openflow-datapath-source.copyright \
-	debian/._openflow-datapath-source.dirs \
-	debian/._openflow-datapath-source.install \
-	debian/._openflow-pki-server.apache2 \
-	debian/._openflow-pki-server.dirs \
-	debian/._openflow-pki-server.install \
-	debian/._openflow-pki-server.postinst \
-	debian/._openflow-pki.postinst \
-	debian/._openflow-switch-config.dirs \
-	debian/._openflow-switch-config.install \
-	debian/._openflow-switch-config.manpages \
-	debian/._openflow-switch-config.overrides \
-	debian/._openflow-switch-config.templates \
-	debian/._openflow-switch.README.Debian \
-	debian/._openflow-switch.default debian/._openflow-switch.dirs \
-	debian/._openflow-switch.init debian/._openflow-switch.install \
-	debian/._openflow-switch.logrotate \
-	debian/._openflow-switch.manpages debian/._po debian/._rules \
-	debian/changelog debian/commands/._reconfigure \
-	debian/commands/._update debian/commands/reconfigure \
+	debian/changelog debian/commands/reconfigure \
 	debian/commands/update debian/compat debian/control.in \
 	debian/control.modules.in debian/copyright \
 	debian/corekeeper.cron.daily debian/corekeeper.init \
@@ -804,8 +768,7 @@ EXTRA_DIST = README.hwtables subst lib/dh1024.pem lib/dh2048.pem \
 	debian/openflow-switch.default debian/openflow-switch.dirs \
 	debian/openflow-switch.init debian/openflow-switch.install \
 	debian/openflow-switch.logrotate \
-	debian/openflow-switch.manpages debian/po/._POTFILES.in \
-	debian/po/._templates.pot debian/po/POTFILES.in \
+	debian/openflow-switch.manpages debian/po/POTFILES.in \
 	debian/po/templates.pot debian/rules
 TESTS_ENVIRONMENT = stp_files='$(stp_files)'
 bin_SCRIPTS = utilities/ofp-pki
